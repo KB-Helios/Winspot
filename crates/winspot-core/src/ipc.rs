@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::search::SearchResult;
+use crate::search::{ActionKind, SearchResult};
 
 pub const PROTOCOL_VERSION: u16 = 1;
 
@@ -27,6 +27,8 @@ impl IpcEnvelope {
 pub enum IpcPayload {
     SearchStarted(SearchStarted),
     ResultBatch(ResultBatch),
+    ActionRequested(ActionRequested),
+    ActionCompleted(ActionCompleted),
     Error(IpcError),
 }
 
@@ -43,6 +45,23 @@ pub struct ResultBatch {
     pub query_id: String,
     pub is_final: bool,
     pub results: Vec<SearchResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionRequested {
+    pub action_id: String,
+    pub result_id: String,
+    pub title: String,
+    pub primary_action: ActionKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionCompleted {
+    pub action_id: String,
+    pub succeeded: bool,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

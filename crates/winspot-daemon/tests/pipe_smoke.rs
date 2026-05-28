@@ -8,7 +8,8 @@ mod windows_tests {
         time::timeout,
     };
     use winspot_core::{
-        ActionKind, IpcEnvelope, IpcPayload, SearchResult, SearchResultKind, SearchStarted,
+        ActionKind, ActionRequested, IpcEnvelope, IpcPayload, SearchResult, SearchResultKind,
+        SearchStarted,
     };
     use winspot_daemon::server::{PipeConfig, build_search_engine, serve_pipe_once};
     use winspot_search::{
@@ -84,6 +85,78 @@ mod windows_tests {
         }
 
         server.await.expect("server task joins");
+    }
+
+    #[tokio::test]
+    async fn daemon_records_usage_after_successful_action() {
+        let pipe_name = format!(r"\\.\pipe\winspot-action-test-{}", std::process::id());
+        let usage_log_path =
+            std::env::temp_dir().join(format!("winspot-action-usage-{}.jsonl", std::process::id()));
+        let _ = fs::remove_file(&usage_log_path);
+        let server_name = pipe_name.clone();
+        let server_usage_log_path = usage_log_path.clone();
+        let server = tokio::spawn(async move {
+            let engine = SearchEngine::from_results(Vec::new());
+            serve_pipe_once(
+                PipeConfig {
+                    pipe_name: server_name,
+                    usage_log_path: Some(server_usage_log_path),
+                },
+                &engine,
+            )
+            .await
+            .expect("pipe server completes");
+        });
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+
+        let client = ClientOptions::new()
+            .open(&pipe_name)
+            .expect("connect to action test pipe");
+        let mut client = BufReader::new(client);
+
+        let request = IpcEnvelope::request(
+            "action-1",
+            IpcPayload::ActionRequested(ActionRequested {
+                action_id: "action-1".to_string(),
+                result_id: "test:copy".to_string(),
+                title: "Copy Test".to_string(),
+                primary_action: ActionKind::Copy,
+            }),
+        );
+        let mut request_json = serde_json::to_string(&request).expect("serialize action request");
+        request_json.push('\n');
+        client
+            .get_mut()
+            .write_all(request_json.as_bytes())
+            .await
+            .expect("write action request");
+
+        let mut line = String::new();
+        timeout(Duration::from_secs(2), client.read_line(&mut line))
+            .await
+            .expect("action response before timeout")
+            .expect("read action response");
+
+        let response: IpcEnvelope =
+            serde_json::from_str(line.trim()).expect("decode action response");
+        match response.payload {
+            IpcPayload::ActionCompleted(completed) => {
+                assert_eq!(completed.action_id, "action-1");
+                assert!(completed.succeeded);
+            }
+            other => panic!("expected ActionCompleted, got {other:?}"),
+        }
+
+        server.await.expect("server task joins");
+
+        let snapshot = UsageStore::new(usage_log_path.clone())
+            .load_snapshot()
+            .expect("load usage snapshot");
+        let signal = snapshot.get("test:copy").expect("usage signal exists");
+        assert_eq!(signal.launch_count, 1);
+
+        fs::remove_file(usage_log_path).expect("cleanup usage log");
     }
 
     #[test]

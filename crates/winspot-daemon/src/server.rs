@@ -1,6 +1,7 @@
 use std::{
     env,
     path::PathBuf,
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -9,11 +10,13 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::windows::named_pipe::ServerOptions,
 };
-use winspot_core::{IpcEnvelope, IpcPayload, ResultBatch};
+use winspot_core::{
+    ActionCompleted, ActionKind, ActionRequested, IpcEnvelope, IpcPayload, ResultBatch,
+};
 use winspot_search::{
     engine::SearchEngine,
     providers::{BuiltinCommandProvider, FileSystemProvider, SearchProvider, StartMenuAppProvider},
-    usage::{UsageSnapshot, UsageStore},
+    usage::{UsageEvent, UsageSnapshot, UsageStore},
 };
 
 #[derive(Debug, Clone)]
@@ -68,7 +71,7 @@ pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyho
     let mut line = String::new();
     reader.read_line(&mut line).await.context("read IPC line")?;
 
-    let response = handle_line(line.trim(), engine)?;
+    let response = handle_line(line.trim(), engine, &config)?;
     let mut response_json = serde_json::to_string(&response).context("serialize response")?;
     response_json.push('\n');
     reader
@@ -85,7 +88,11 @@ pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyho
     Ok(())
 }
 
-fn handle_line(line: &str, engine: &SearchEngine) -> anyhow::Result<IpcEnvelope> {
+fn handle_line(
+    line: &str,
+    engine: &SearchEngine,
+    config: &PipeConfig,
+) -> anyhow::Result<IpcEnvelope> {
     let envelope: IpcEnvelope = serde_json::from_str(line).context("decode IPC envelope")?;
     let request_id = envelope.request_id.clone();
 
@@ -101,6 +108,13 @@ fn handle_line(line: &str, engine: &SearchEngine) -> anyhow::Result<IpcEnvelope>
                 IpcPayload::ResultBatch(batch),
             ))
         }
+        IpcPayload::ActionRequested(action) => {
+            let completed = handle_action(action, config);
+            Ok(IpcEnvelope::request(
+                request_id,
+                IpcPayload::ActionCompleted(completed),
+            ))
+        }
         _ => Ok(IpcEnvelope::request(
             request_id,
             IpcPayload::Error(winspot_core::ipc::IpcError {
@@ -109,6 +123,70 @@ fn handle_line(line: &str, engine: &SearchEngine) -> anyhow::Result<IpcEnvelope>
             }),
         )),
     }
+}
+
+fn handle_action(action: ActionRequested, config: &PipeConfig) -> ActionCompleted {
+    match execute_action(&action).and_then(|message| {
+        record_usage(&action, config)?;
+        Ok(message)
+    }) {
+        Ok(message) => ActionCompleted {
+            action_id: action.action_id,
+            succeeded: true,
+            message,
+        },
+        Err(error) => ActionCompleted {
+            action_id: action.action_id,
+            succeeded: false,
+            message: error.to_string(),
+        },
+    }
+}
+
+fn execute_action(action: &ActionRequested) -> anyhow::Result<String> {
+    match action.primary_action {
+        ActionKind::Copy => Ok(format!("Prepared {}", action.title)),
+        ActionKind::RunCommand => run_command_action(action),
+        ActionKind::Open => open_action(action),
+    }
+}
+
+fn run_command_action(action: &ActionRequested) -> anyhow::Result<String> {
+    let command = match action.result_id.as_str() {
+        "command:calculator" => "calc.exe",
+        "command:terminal" => "wt.exe",
+        other => anyhow::bail!("Unsupported command action {other}"),
+    };
+
+    Command::new(command)
+        .spawn()
+        .with_context(|| format!("run {}", action.title))?;
+    Ok(format!("Launched {}", action.title))
+}
+
+fn open_action(action: &ActionRequested) -> anyhow::Result<String> {
+    let Some((_, target)) = action.result_id.split_once(':') else {
+        anyhow::bail!("Action target is missing");
+    };
+
+    Command::new("cmd")
+        .args(["/C", "start", "", target])
+        .spawn()
+        .with_context(|| format!("open {}", action.title))?;
+    Ok(format!("Opened {}", action.title))
+}
+
+fn record_usage(action: &ActionRequested, config: &PipeConfig) -> anyhow::Result<()> {
+    let Some(path) = &config.usage_log_path else {
+        return Ok(());
+    };
+
+    UsageStore::new(path.clone())
+        .record(UsageEvent {
+            result_id: action.result_id.clone(),
+            timestamp_unix_seconds: current_unix_seconds(),
+        })
+        .with_context(|| format!("record usage for {}", action.result_id))
 }
 
 fn default_search_providers() -> Vec<Box<dyn SearchProvider>> {

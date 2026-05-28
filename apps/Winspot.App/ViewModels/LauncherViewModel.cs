@@ -11,6 +11,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 {
     private readonly WinspotIpcClient _ipcClient;
     private CancellationTokenSource? _queryCancellation;
+    private CancellationTokenSource? _actionCancellation;
     private string _query = string.Empty;
     private SearchResultItem? _selectedResult;
     private string _statusText = "Start typing to search";
@@ -46,6 +47,36 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     {
         get => _statusText;
         private set => SetField(ref _statusText, value);
+    }
+
+    public async Task ExecuteSelectedAsync()
+    {
+        if (SelectedResult is null)
+        {
+            StatusText = "No result selected";
+            return;
+        }
+
+        _actionCancellation?.Cancel();
+        _actionCancellation = new CancellationTokenSource();
+        var cancellationToken = _actionCancellation.Token;
+
+        try
+        {
+            StatusText = $"Running {SelectedResult.Title}";
+            var message = await _ipcClient.ExecuteAsync(SelectedResult, cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                StatusText = message;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Action failed: {ex.Message}";
+        }
     }
 
     private async Task RefreshAsync(string query)

@@ -8,7 +8,10 @@
     xmlns:models="using:Winspot_App.Models"
     mc:Ignorable="d">
 
-    <Grid Padding="20" RowSpacing="12">
+    <Grid
+        Padding="20"
+        KeyDown="OnLauncherKeyDown"
+        RowSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
