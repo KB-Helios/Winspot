@@ -9,6 +9,9 @@ pub trait SearchProvider {
     fn collect_results(&self) -> Vec<SearchResult>;
 }
 
+const DEFAULT_FILE_SYSTEM_MAX_DEPTH: usize = 2;
+const DEFAULT_FILE_SYSTEM_MAX_ENTRIES: usize = 500;
+
 #[derive(Debug, Default)]
 pub struct BuiltinCommandProvider;
 
@@ -72,6 +75,50 @@ impl SearchProvider for StartMenuAppProvider {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct FileSystemProvider {
+    roots: Vec<PathBuf>,
+    max_depth: usize,
+    max_entries: usize,
+}
+
+impl Default for FileSystemProvider {
+    fn default() -> Self {
+        Self::new(
+            default_file_system_roots(),
+            DEFAULT_FILE_SYSTEM_MAX_DEPTH,
+            DEFAULT_FILE_SYSTEM_MAX_ENTRIES,
+        )
+    }
+}
+
+impl FileSystemProvider {
+    pub fn new(roots: Vec<PathBuf>, max_depth: usize, max_entries: usize) -> Self {
+        Self {
+            roots,
+            max_depth,
+            max_entries,
+        }
+    }
+
+    pub fn collect_results(&self) -> Vec<SearchResult> {
+        <Self as SearchProvider>::collect_results(self)
+    }
+}
+
+impl SearchProvider for FileSystemProvider {
+    fn collect_results(&self) -> Vec<SearchResult> {
+        let mut results = Vec::new();
+        for root in &self.roots {
+            collect_file_system_entries(root, 0, self.max_depth, self.max_entries, &mut results);
+            if results.len() >= self.max_entries {
+                break;
+            }
+        }
+        results
+    }
+}
+
 fn default_start_menu_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(program_data) = env::var("ProgramData") {
@@ -81,6 +128,18 @@ fn default_start_menu_roots() -> Vec<PathBuf> {
         roots.push(PathBuf::from(app_data).join("Microsoft\\Windows\\Start Menu"));
     }
     roots
+}
+
+fn default_file_system_roots() -> Vec<PathBuf> {
+    let Ok(user_profile) = env::var("USERPROFILE") else {
+        return Vec::new();
+    };
+
+    let user_profile = PathBuf::from(user_profile);
+    ["Desktop", "Documents", "Downloads"]
+        .into_iter()
+        .map(|folder| user_profile.join(folder))
+        .collect()
 }
 
 fn collect_shortcuts(root: &Path, results: &mut Vec<SearchResult>) {
@@ -111,5 +170,60 @@ fn collect_shortcuts(root: &Path, results: &mut Vec<SearchResult>) {
             score: 0.0,
             primary_action: ActionKind::Open,
         });
+    }
+}
+
+fn collect_file_system_entries(
+    root: &Path,
+    depth: usize,
+    max_depth: usize,
+    max_entries: usize,
+    results: &mut Vec<SearchResult>,
+) {
+    if depth >= max_depth || results.len() >= max_entries {
+        return;
+    }
+
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        if results.len() >= max_entries {
+            return;
+        }
+
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        let Some(title) = path.file_name().and_then(|file_name| file_name.to_str()) else {
+            continue;
+        };
+
+        if file_type.is_dir() {
+            results.push(SearchResult {
+                id: format!("folder:{}", path.display()),
+                title: title.to_string(),
+                subtitle: path.display().to_string(),
+                kind: SearchResultKind::Folder,
+                score: 0.0,
+                primary_action: ActionKind::Open,
+            });
+            collect_file_system_entries(&path, depth + 1, max_depth, max_entries, results);
+            continue;
+        }
+
+        if file_type.is_file() {
+            results.push(SearchResult {
+                id: format!("file:{}", path.display()),
+                title: title.to_string(),
+                subtitle: path.display().to_string(),
+                kind: SearchResultKind::File,
+                score: 0.0,
+                primary_action: ActionKind::Open,
+            });
+        }
     }
 }

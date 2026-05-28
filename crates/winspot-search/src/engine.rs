@@ -1,7 +1,7 @@
 use winspot_core::SearchResult;
 
 use crate::{
-    providers::{BuiltinCommandProvider, SearchProvider, StartMenuAppProvider},
+    providers::{BuiltinCommandProvider, FileSystemProvider, SearchProvider, StartMenuAppProvider},
     ranking::rank_results,
 };
 
@@ -33,6 +33,7 @@ impl Default for SearchEngine {
         Self::from_providers(vec![
             Box::new(BuiltinCommandProvider),
             Box::new(StartMenuAppProvider::default()),
+            Box::new(FileSystemProvider::default()),
         ])
     }
 }
