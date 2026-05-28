@@ -1,5 +1,8 @@
 use winspot_core::{ActionKind, SearchResult, SearchResultKind};
-use winspot_search::ranking::{rank_results, score_match};
+use winspot_search::{
+    ranking::{rank_results, rank_results_with_usage, score_match},
+    usage::{UsageSignal, UsageSnapshot},
+};
 
 #[test]
 fn score_match_rewards_exact_and_prefix_matches() {
@@ -39,4 +42,63 @@ fn rank_results_orders_by_score_then_title() {
 
     assert_eq!(ranked[0].title, "Notepad");
     assert!(ranked[0].score > ranked[1].score);
+}
+
+#[test]
+fn rank_results_with_usage_boosts_frequent_recent_results() {
+    let results = vec![
+        SearchResult {
+            id: "app:notes".to_string(),
+            title: "Notes".to_string(),
+            subtitle: "Less-used exact-ish match".to_string(),
+            kind: SearchResultKind::App,
+            score: 0.0,
+            primary_action: ActionKind::Open,
+        },
+        SearchResult {
+            id: "app:notepad".to_string(),
+            title: "Notepad".to_string(),
+            subtitle: "Frequently used editor".to_string(),
+            kind: SearchResultKind::App,
+            score: 0.0,
+            primary_action: ActionKind::Open,
+        },
+    ];
+    let mut usage = UsageSnapshot::default();
+    usage.insert(
+        "app:notepad".to_string(),
+        UsageSignal {
+            launch_count: 8,
+            last_used_unix_seconds: 2_000,
+        },
+    );
+
+    let ranked = rank_results_with_usage("note", results, 10, &usage, 2_100);
+
+    assert_eq!(ranked[0].title, "Notepad");
+    assert!(ranked[0].score > ranked[1].score);
+}
+
+#[test]
+fn rank_results_with_usage_does_not_include_text_misses() {
+    let results = vec![SearchResult {
+        id: "app:notepad".to_string(),
+        title: "Notepad".to_string(),
+        subtitle: "Frequently used editor".to_string(),
+        kind: SearchResultKind::App,
+        score: 0.0,
+        primary_action: ActionKind::Open,
+    }];
+    let mut usage = UsageSnapshot::default();
+    usage.insert(
+        "app:notepad".to_string(),
+        UsageSignal {
+            launch_count: 20,
+            last_used_unix_seconds: 2_000,
+        },
+    );
+
+    let ranked = rank_results_with_usage("zzzz", results, 10, &usage, 2_100);
+
+    assert!(ranked.is_empty());
 }

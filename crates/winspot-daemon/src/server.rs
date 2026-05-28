@@ -1,29 +1,56 @@
+use std::{
+    env,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
 use anyhow::Context;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::windows::named_pipe::ServerOptions,
 };
 use winspot_core::{IpcEnvelope, IpcPayload, ResultBatch};
-use winspot_search::engine::SearchEngine;
+use winspot_search::{
+    engine::SearchEngine,
+    providers::{BuiltinCommandProvider, FileSystemProvider, SearchProvider, StartMenuAppProvider},
+    usage::{UsageSnapshot, UsageStore},
+};
 
 #[derive(Debug, Clone)]
 pub struct PipeConfig {
     pub pipe_name: String,
+    pub usage_log_path: Option<PathBuf>,
 }
 
 impl Default for PipeConfig {
     fn default() -> Self {
         Self {
             pipe_name: r"\\.\pipe\winspot-dev".to_string(),
+            usage_log_path: default_usage_log_path(),
         }
     }
 }
 
 pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
-    let engine = SearchEngine::default();
+    let engine = build_search_engine(&config).context("build search engine")?;
     loop {
         serve_pipe_once(config.clone(), &engine).await?;
     }
+}
+
+pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> {
+    let usage = match &config.usage_log_path {
+        Some(path) => UsageStore::new(path.clone())
+            .load_snapshot()
+            .with_context(|| format!("load usage log {}", path.display()))?,
+        None => UsageSnapshot::default(),
+    };
+
+    Ok(SearchEngine::from_providers_with_usage(
+        default_search_providers(),
+        usage,
+        current_unix_seconds(),
+    ))
 }
 
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
@@ -82,4 +109,25 @@ fn handle_line(line: &str, engine: &SearchEngine) -> anyhow::Result<IpcEnvelope>
             }),
         )),
     }
+}
+
+fn default_search_providers() -> Vec<Box<dyn SearchProvider>> {
+    vec![
+        Box::new(BuiltinCommandProvider),
+        Box::new(StartMenuAppProvider::default()),
+        Box::new(FileSystemProvider::default()),
+    ]
+}
+
+fn default_usage_log_path() -> Option<PathBuf> {
+    env::var("LOCALAPPDATA")
+        .ok()
+        .map(|local_app_data| PathBuf::from(local_app_data).join("Winspot\\usage-events.jsonl"))
+}
+
+fn current_unix_seconds() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
 }

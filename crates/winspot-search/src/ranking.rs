@@ -2,6 +2,12 @@ use std::cmp::Ordering;
 
 use winspot_core::SearchResult;
 
+use crate::usage::UsageSnapshot;
+
+const FREQUENCY_WEIGHT: f32 = 22.0;
+const RECENCY_WEIGHT: f32 = 35.0;
+const RECENCY_WINDOW_SECONDS: u64 = 60 * 60 * 24 * 14;
+
 pub fn score_match(query: &str, candidate: &str) -> f32 {
     let query = query.trim().to_lowercase();
     let candidate = candidate.trim().to_lowercase();
@@ -38,10 +44,25 @@ pub fn score_match(query: &str, candidate: &str) -> f32 {
 }
 
 pub fn rank_results(query: &str, results: Vec<SearchResult>, limit: usize) -> Vec<SearchResult> {
+    rank_results_with_usage(query, results, limit, &UsageSnapshot::default(), 0)
+}
+
+pub fn rank_results_with_usage(
+    query: &str,
+    results: Vec<SearchResult>,
+    limit: usize,
+    usage: &UsageSnapshot,
+    now_unix_seconds: u64,
+) -> Vec<SearchResult> {
     let mut scored = results
         .into_iter()
         .map(|mut result| {
-            result.score = score_match(query, &result.title);
+            let text_score = score_match(query, &result.title);
+            result.score = if text_score > 0.0 {
+                text_score + usage_boost(&result.id, usage, now_unix_seconds)
+            } else {
+                0.0
+            };
             result
         })
         .filter(|result| result.score > 0.0)
@@ -56,4 +77,21 @@ pub fn rank_results(query: &str, results: Vec<SearchResult>, limit: usize) -> Ve
     });
     scored.truncate(limit);
     scored
+}
+
+fn usage_boost(result_id: &str, usage: &UsageSnapshot, now_unix_seconds: u64) -> f32 {
+    let Some(signal) = usage.get(result_id) else {
+        return 0.0;
+    };
+
+    let frequency = signal.launch_count.min(20) as f32 * FREQUENCY_WEIGHT;
+    let recency = if now_unix_seconds == 0 || signal.last_used_unix_seconds == 0 {
+        0.0
+    } else {
+        let age = now_unix_seconds.saturating_sub(signal.last_used_unix_seconds);
+        let remaining = RECENCY_WINDOW_SECONDS.saturating_sub(age) as f32;
+        (remaining / RECENCY_WINDOW_SECONDS as f32) * RECENCY_WEIGHT
+    };
+
+    frequency + recency
 }

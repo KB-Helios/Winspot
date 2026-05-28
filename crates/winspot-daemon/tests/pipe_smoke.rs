@@ -1,6 +1,6 @@
 #[cfg(windows)]
 mod windows_tests {
-    use std::time::Duration;
+    use std::{fs, time::Duration};
 
     use tokio::{
         io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -10,8 +10,11 @@ mod windows_tests {
     use winspot_core::{
         ActionKind, IpcEnvelope, IpcPayload, SearchResult, SearchResultKind, SearchStarted,
     };
-    use winspot_daemon::server::{PipeConfig, serve_pipe_once};
-    use winspot_search::engine::SearchEngine;
+    use winspot_daemon::server::{PipeConfig, build_search_engine, serve_pipe_once};
+    use winspot_search::{
+        engine::SearchEngine,
+        usage::{UsageEvent, UsageStore},
+    };
 
     #[tokio::test]
     async fn daemon_streams_prebuilt_search_results() {
@@ -29,6 +32,7 @@ mod windows_tests {
             serve_pipe_once(
                 PipeConfig {
                     pipe_name: server_name,
+                    usage_log_path: None,
                 },
                 &engine,
             )
@@ -80,5 +84,31 @@ mod windows_tests {
         }
 
         server.await.expect("server task joins");
+    }
+
+    #[test]
+    fn daemon_builds_search_engine_with_usage_log() {
+        let path =
+            std::env::temp_dir().join(format!("winspot-daemon-usage-{}.jsonl", std::process::id()));
+        let _ = fs::remove_file(&path);
+        let store = UsageStore::new(path.clone());
+        store
+            .record(UsageEvent {
+                result_id: "command:terminal".to_string(),
+                timestamp_unix_seconds: 2_000,
+            })
+            .expect("record terminal usage");
+
+        let engine = build_search_engine(&PipeConfig {
+            pipe_name: r"\\.\pipe\winspot-unused".to_string(),
+            usage_log_path: Some(path.clone()),
+        })
+        .expect("build engine with usage");
+
+        let results = engine.search("term", 5);
+
+        assert_eq!(results[0].title, "Terminal");
+
+        fs::remove_file(path).expect("cleanup usage log");
     }
 }

@@ -4,6 +4,7 @@ use winspot_core::{ActionKind, SearchResult, SearchResultKind};
 use winspot_search::{
     engine::SearchEngine,
     providers::{BuiltinCommandProvider, SearchProvider},
+    usage::{UsageSignal, UsageSnapshot},
 };
 
 #[test]
@@ -40,6 +41,44 @@ fn search_engine_can_rank_explicit_candidates() {
     let results = engine.search("term", 5);
 
     assert_eq!(results[0].title, "Terminal");
+}
+
+#[test]
+fn search_engine_applies_usage_snapshot_to_ranking() {
+    let mut usage = UsageSnapshot::default();
+    usage.insert(
+        "app:notepad".to_string(),
+        UsageSignal {
+            launch_count: 8,
+            last_used_unix_seconds: 2_000,
+        },
+    );
+    let engine = SearchEngine::from_results_with_usage(
+        vec![
+            SearchResult {
+                id: "app:notes".to_string(),
+                title: "Notes".to_string(),
+                subtitle: "Less-used exact-ish match".to_string(),
+                kind: SearchResultKind::App,
+                score: 0.0,
+                primary_action: ActionKind::Open,
+            },
+            SearchResult {
+                id: "app:notepad".to_string(),
+                title: "Notepad".to_string(),
+                subtitle: "Frequently used editor".to_string(),
+                kind: SearchResultKind::App,
+                score: 0.0,
+                primary_action: ActionKind::Open,
+            },
+        ],
+        usage,
+        2_100,
+    );
+
+    let results = engine.search("note", 5);
+
+    assert_eq!(results[0].title, "Notepad");
 }
 
 struct CountingProvider {
