@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/winspot-bench",
     "crates/winspot-core",
     "crates/winspot-daemon",
     "crates/winspot-search"

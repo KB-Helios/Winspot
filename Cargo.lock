@@ -185,6 +185,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "winspot-bench"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "winspot-search",
+]
+
+[[package]]
 name = "winspot-core"
 version = "0.1.0"
 dependencies = [
