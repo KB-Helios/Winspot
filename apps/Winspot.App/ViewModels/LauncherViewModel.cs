@@ -14,7 +14,8 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private CancellationTokenSource? _actionCancellation;
     private CancellationTokenSource? _previewCancellation;
     private string _query = string.Empty;
-    private PreviewItem? _preview;
+    private string _previewBody = "Select a result to preview";
+    private string _previewTitle = "Preview";
     private SearchResultItem? _selectedResult;
     private string _statusText = "Start typing to search";
 
@@ -51,10 +52,16 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         }
     }
 
-    public PreviewItem? Preview
+    public string PreviewBody
     {
-        get => _preview;
-        private set => SetField(ref _preview, value);
+        get => _previewBody;
+        private set => SetField(ref _previewBody, value);
+    }
+
+    public string PreviewTitle
+    {
+        get => _previewTitle;
+        private set => SetField(ref _previewTitle, value);
     }
 
     public string StatusText
@@ -103,7 +110,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             Results.Clear();
             SelectedResult = null;
-            Preview = null;
+            ResetPreview();
             StatusText = "Start typing to search";
             return;
         }
@@ -135,7 +142,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             Results.Clear();
             SelectedResult = null;
-            Preview = null;
+            ResetPreview();
             StatusText = $"Backend unavailable: {ex.Message}";
         }
     }
@@ -148,18 +155,20 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
         if (result is null)
         {
-            Preview = null;
+            ResetPreview();
             return;
         }
 
-        Preview = new PreviewItem(result.Title, "Loading preview");
+        SetPreview(result.Title, "Loading preview");
 
         try
         {
             var preview = await _ipcClient.GetPreviewAsync(result, cancellationToken);
             if (!cancellationToken.IsCancellationRequested)
             {
-                Preview = preview ?? new PreviewItem(result.Title, "No preview available");
+                SetPreview(
+                    preview?.Title ?? result.Title,
+                    preview?.Body ?? "No preview available");
             }
         }
         catch (OperationCanceledException)
@@ -167,8 +176,19 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            Preview = new PreviewItem(result.Title, $"Preview unavailable: {ex.Message}");
+            SetPreview(result.Title, $"Preview unavailable: {ex.Message}");
         }
+    }
+
+    private void ResetPreview()
+    {
+        SetPreview("Preview", "Select a result to preview");
+    }
+
+    private void SetPreview(string title, string body)
+    {
+        PreviewTitle = title;
+        PreviewBody = body;
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

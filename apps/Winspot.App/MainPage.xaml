@@ -9,13 +9,13 @@
     mc:Ignorable="d">
 
     <Grid
-        Padding="20"
-        ColumnSpacing="16"
+        Padding="12"
+        ColumnSpacing="12"
         KeyDown="OnLauncherKeyDown"
-        RowSpacing="12">
+        RowSpacing="8">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="2*" MinWidth="360" />
-            <ColumnDefinition Width="*" MinWidth="260" />
+            <ColumnDefinition Width="*" MinWidth="240" />
         </Grid.ColumnDefinitions>
 
         <Grid.RowDefinitions>
@@ -28,9 +28,9 @@
             x:Name="SearchBox"
             AutomationProperties.AutomationId="WinspotSearchBox"
             AutomationProperties.Name="Winspot search"
-            FontSize="22"
+            FontSize="18"
             Grid.ColumnSpan="2"
-            Header="Search"
+            MinHeight="40"
             PlaceholderText="Search apps, files, commands, and plugins"
             Text="{x:Bind ViewModel.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
@@ -42,24 +42,60 @@
             IsItemClickEnabled="True"
             ItemsSource="{x:Bind ViewModel.Results, Mode=OneWay}"
             SelectedItem="{x:Bind ViewModel.SelectedResult, Mode=TwoWay}">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Margin" Value="0,0,0,2" />
+                    <Setter Property="MinHeight" Value="44" />
+                    <Setter Property="Padding" Value="0" />
+                </Style>
+            </ListView.ItemContainerStyle>
+
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="models:SearchResultItem">
-                    <Grid Padding="10" ColumnSpacing="12">
+                    <Grid
+                        MinHeight="44"
+                        Padding="8,5"
+                        ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <StackPanel Spacing="2">
-                            <TextBlock FontSize="16" Text="{x:Bind Title}" />
+                        <Border
+                            Width="28"
+                            Height="28"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource LayerFillColorDefaultBrush}"
+                            CornerRadius="6">
+                            <FontIcon
+                                AutomationProperties.Name="{x:Bind IconLabel}"
+                                FontFamily="Segoe Fluent Icons"
+                                FontSize="14"
+                                Glyph="{x:Bind IconGlyph}" />
+                        </Border>
+
+                        <StackPanel
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Spacing="0">
                             <TextBlock
+                                FontSize="14"
+                                Text="{x:Bind Title}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                FontSize="11"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                MaxLines="1"
                                 Text="{x:Bind Subtitle}"
                                 TextTrimming="CharacterEllipsis" />
                         </StackPanel>
 
                         <TextBlock
-                            Grid.Column="1"
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            FontSize="11"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="{x:Bind Kind}" />
                     </Grid>
@@ -70,22 +106,23 @@
         <Border
             Grid.Row="1"
             Grid.Column="1"
-            Padding="14"
+            Padding="10"
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
-            CornerRadius="8">
+            CornerRadius="6">
             <ScrollViewer>
-                <StackPanel Spacing="8">
+                <StackPanel Spacing="6">
                     <TextBlock
                         AutomationProperties.AutomationId="WinspotPreviewTitle"
-                        FontSize="16"
+                        FontSize="14"
                         FontWeight="SemiBold"
-                        Text="{x:Bind ViewModel.Preview.Title, Mode=OneWay, FallbackValue=Preview}" />
+                        Text="{x:Bind ViewModel.PreviewTitle, Mode=OneWay}" />
                     <TextBlock
                         AutomationProperties.AutomationId="WinspotPreviewBody"
+                        FontSize="12"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind ViewModel.Preview.Body, Mode=OneWay, FallbackValue=Select a result to preview}"
+                        Text="{x:Bind ViewModel.PreviewBody, Mode=OneWay}"
                         TextWrapping="WrapWholeWords" />
                 </StackPanel>
             </ScrollViewer>
@@ -95,6 +132,7 @@
             Grid.Row="2"
             Grid.ColumnSpan="2"
             AutomationProperties.AutomationId="WinspotStatusText"
+            FontSize="12"
             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
             Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
     </Grid>

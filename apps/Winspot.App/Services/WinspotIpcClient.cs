@@ -9,6 +9,7 @@ public sealed class WinspotIpcClient
 {
     private const int ProtocolVersion = 1;
     private const string PipeName = "winspot-dev";
+    private static readonly WinspotBackendProcess BackendProcess = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(
@@ -21,7 +22,7 @@ public sealed class WinspotIpcClient
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
 
-        await pipe.ConnectAsync(750, cancellationToken);
+        await ConnectAsync(pipe, cancellationToken);
 
         await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
         using var reader = new StreamReader(pipe, leaveOpen: true);
@@ -63,7 +64,7 @@ public sealed class WinspotIpcClient
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
 
-        await pipe.ConnectAsync(750, cancellationToken);
+        await ConnectAsync(pipe, cancellationToken);
 
         await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
         using var reader = new StreamReader(pipe, leaveOpen: true);
@@ -118,7 +119,7 @@ public sealed class WinspotIpcClient
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
 
-        await pipe.ConnectAsync(750, cancellationToken);
+        await ConnectAsync(pipe, cancellationToken);
 
         await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
         using var reader = new StreamReader(pipe, leaveOpen: true);
@@ -188,4 +189,23 @@ public sealed class WinspotIpcClient
         string QueryId,
         bool IsFinal,
         IReadOnlyList<SearchResultItem> Results);
+
+    private static async Task ConnectAsync(
+        NamedPipeClientStream pipe,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await pipe.ConnectAsync(750, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            if (!await BackendProcess.TryStartAsync(cancellationToken))
+            {
+                throw;
+            }
+
+            await pipe.ConnectAsync(2_000, cancellationToken);
+        }
+    }
 }
