@@ -81,6 +81,39 @@ fn search_engine_applies_usage_snapshot_to_ranking() {
     assert_eq!(results[0].title, "Notepad");
 }
 
+#[test]
+fn search_engine_reuses_cached_ranked_results_for_same_query_and_limit() {
+    let engine = SearchEngine::from_results(BuiltinCommandProvider::default().collect_results());
+
+    let first = engine.search("term", 5);
+    let after_first = engine.cache_stats();
+    let second = engine.search(" term ", 5);
+    let after_second = engine.cache_stats();
+
+    assert_eq!(first, second);
+    assert_eq!(after_first.misses, 1);
+    assert_eq!(after_first.hits, 0);
+    assert_eq!(after_second.misses, 1);
+    assert_eq!(after_second.hits, 1);
+}
+
+#[test]
+fn search_engine_cache_is_bounded() {
+    let engine = SearchEngine::from_results_with_cache_limit(
+        BuiltinCommandProvider::default().collect_results(),
+        1,
+    );
+
+    let _ = engine.search("calc", 5);
+    let _ = engine.search("term", 5);
+    let _ = engine.search("calc", 5);
+    let stats = engine.cache_stats();
+
+    assert_eq!(stats.entries, 1);
+    assert_eq!(stats.misses, 3);
+    assert_eq!(stats.hits, 0);
+}
+
 struct CountingProvider {
     collection_count: Rc<Cell<u32>>,
 }
