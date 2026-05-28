@@ -200,6 +200,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "winspot-core",
+ "winspot-search",
 ]
 
 [[package]]

@@ -33,7 +33,7 @@ mod windows_tests {
             "query-1",
             IpcPayload::SearchStarted(SearchStarted {
                 query_id: "query-1".to_string(),
-                text: "note".to_string(),
+                text: "calc".to_string(),
             }),
         );
         let mut request_json = serde_json::to_string(&request).expect("serialize request");
@@ -55,7 +55,7 @@ mod windows_tests {
             IpcPayload::ResultBatch(batch) => {
                 assert_eq!(batch.query_id, "query-1");
                 assert!(batch.is_final);
-                assert!(batch.results.iter().any(|result| result.title == "Notepad"));
+                assert!(batch.results.iter().any(|result| result.title == "Calculator"));
             }
             other => panic!("expected ResultBatch, got {other:?}"),
         }

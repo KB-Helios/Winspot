@@ -4,8 +4,9 @@ use tokio::{
     net::windows::named_pipe::ServerOptions,
 };
 use winspot_core::{
-    ActionKind, IpcEnvelope, IpcPayload, ResultBatch, SearchResult, SearchResultKind,
+    IpcEnvelope, IpcPayload, ResultBatch,
 };
+use winspot_search::engine::SearchEngine;
 
 #[derive(Debug, Clone)]
 pub struct PipeConfig {
@@ -63,7 +64,7 @@ fn handle_line(line: &str) -> anyhow::Result<IpcEnvelope> {
             let batch = ResultBatch {
                 query_id: search.query_id,
                 is_final: true,
-                results: mock_results(&search.text),
+                results: SearchEngine::default().search(&search.text, 20),
             };
             Ok(IpcEnvelope::request(request_id, IpcPayload::ResultBatch(batch)))
         }
@@ -75,43 +76,4 @@ fn handle_line(line: &str) -> anyhow::Result<IpcEnvelope> {
             }),
         )),
     }
-}
-
-fn mock_results(query: &str) -> Vec<SearchResult> {
-    let normalized = query.trim().to_lowercase();
-    let mut results = vec![
-        SearchResult {
-            id: "app:notepad".to_string(),
-            title: "Notepad".to_string(),
-            subtitle: "App result from Rust daemon".to_string(),
-            kind: SearchResultKind::App,
-            score: 100.0,
-            primary_action: ActionKind::Open,
-        },
-        SearchResult {
-            id: "command:calculator".to_string(),
-            title: "Calculator".to_string(),
-            subtitle: "Built-in command placeholder".to_string(),
-            kind: SearchResultKind::Command,
-            score: 80.0,
-            primary_action: ActionKind::RunCommand,
-        },
-    ];
-
-    if !normalized.is_empty() {
-        results.retain(|result| result.title.to_lowercase().contains(&normalized));
-    }
-
-    if results.is_empty() {
-        results.push(SearchResult {
-            id: "command:search-web".to_string(),
-            title: format!("Search for {query}"),
-            subtitle: "Fallback command result".to_string(),
-            kind: SearchResultKind::Command,
-            score: 10.0,
-            primary_action: ActionKind::RunCommand,
-        });
-    }
-
-    results
 }
