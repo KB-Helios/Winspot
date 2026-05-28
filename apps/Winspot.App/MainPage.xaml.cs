@@ -24,6 +24,11 @@ public sealed partial class MainPage : Page
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        FocusSearch();
+    }
+
+    public void FocusSearch()
+    {
         SearchBox.Focus(FocusState.Programmatic);
     }
 
