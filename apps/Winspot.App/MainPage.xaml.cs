@@ -1,20 +1,24 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
+using Winspot_App.Services;
+using Winspot_App.ViewModels;
 
 namespace Winspot_App;
 
-/// <summary>
-/// The main content page displayed inside the application window.
-/// Add your UI logic, event handlers, and data binding here.
-/// </summary>
 public sealed partial class MainPage : Page
 {
     public MainPage()
     {
+        ViewModel = new LauncherViewModel(new WinspotIpcClient());
         InitializeComponent();
+        Loaded += OnLoaded;
+    }
 
-        // TODO: Add your initialization logic here.
+    public LauncherViewModel ViewModel { get; }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Focus(FocusState.Programmatic);
     }
 }
