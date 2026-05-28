@@ -114,6 +114,14 @@ fn search_engine_cache_is_bounded() {
     assert_eq!(stats.hits, 0);
 }
 
+#[test]
+fn default_search_engine_includes_dynamic_calculator_results() {
+    let results = SearchEngine::default().search("2 + 2", 5);
+
+    assert_eq!(results[0].title, "2 + 2 = 4");
+    assert_eq!(results[0].primary_action, ActionKind::Copy);
+}
+
 struct CountingProvider {
     collection_count: Rc<Cell<u32>>,
 }

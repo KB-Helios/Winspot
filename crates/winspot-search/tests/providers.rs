@@ -1,7 +1,10 @@
 use std::fs;
 
 use winspot_core::SearchResultKind;
-use winspot_search::providers::{BuiltinCommandProvider, FileSystemProvider, StartMenuAppProvider};
+use winspot_search::providers::{
+    BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
+    StartMenuAppProvider,
+};
 
 #[test]
 fn builtin_command_provider_exposes_calculator_and_terminal() {
@@ -64,4 +67,20 @@ fn file_system_provider_respects_entry_limit() {
     assert_eq!(results.len(), 1);
 
     fs::remove_dir_all(root).expect("cleanup test directory");
+}
+
+#[test]
+fn calculator_provider_returns_result_for_arithmetic_expression() {
+    let results = CalculatorProvider::default().search("2 + 3 * 4");
+
+    assert_eq!(results[0].title, "2 + 3 * 4 = 14");
+    assert_eq!(results[0].subtitle, "Calculator result");
+    assert_eq!(results[0].kind, SearchResultKind::Command);
+}
+
+#[test]
+fn calculator_provider_ignores_non_math_queries() {
+    let results = CalculatorProvider::default().search("notepad");
+
+    assert!(results.is_empty());
 }

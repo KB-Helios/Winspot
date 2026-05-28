@@ -2,6 +2,7 @@ use std::{
     env,
     path::PathBuf,
     process::Command,
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -16,7 +17,10 @@ use winspot_core::{
 };
 use winspot_search::{
     engine::SearchEngine,
-    providers::{BuiltinCommandProvider, FileSystemProvider, SearchProvider, StartMenuAppProvider},
+    providers::{
+        BuiltinCommandProvider, CalculatorProvider, FileSystemProvider, SearchProvider,
+        StartMenuAppProvider,
+    },
     usage::{UsageEvent, UsageSnapshot, UsageStore},
 };
 
@@ -54,7 +58,8 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
         default_search_providers(),
         usage,
         current_unix_seconds(),
-    ))
+    )
+    .with_dynamic_provider(Arc::new(CalculatorProvider)))
 }
 
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {

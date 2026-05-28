@@ -9,6 +9,10 @@ pub trait SearchProvider {
     fn collect_results(&self) -> Vec<SearchResult>;
 }
 
+pub trait DynamicSearchProvider: Send + Sync {
+    fn search(&self, query: &str) -> Vec<SearchResult>;
+}
+
 const DEFAULT_FILE_SYSTEM_MAX_DEPTH: usize = 2;
 const DEFAULT_FILE_SYSTEM_MAX_ENTRIES: usize = 500;
 
@@ -119,6 +123,27 @@ impl SearchProvider for FileSystemProvider {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct CalculatorProvider;
+
+impl DynamicSearchProvider for CalculatorProvider {
+    fn search(&self, query: &str) -> Vec<SearchResult> {
+        let expression = query.trim();
+        let Some(value) = evaluate_arithmetic_expression(expression) else {
+            return Vec::new();
+        };
+
+        vec![SearchResult {
+            id: format!("calculator:{expression}"),
+            title: format!("{expression} = {}", format_number(value)),
+            subtitle: "Calculator result".to_string(),
+            kind: SearchResultKind::Command,
+            score: 0.0,
+            primary_action: ActionKind::Copy,
+        }]
+    }
+}
+
 fn default_start_menu_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(program_data) = env::var("ProgramData") {
@@ -170,6 +195,147 @@ fn collect_shortcuts(root: &Path, results: &mut Vec<SearchResult>) {
             score: 0.0,
             primary_action: ActionKind::Open,
         });
+    }
+}
+
+fn evaluate_arithmetic_expression(expression: &str) -> Option<f64> {
+    if !looks_like_math(expression) {
+        return None;
+    }
+
+    let mut parser = ArithmeticParser::new(expression);
+    let value = parser.parse_expression()?;
+    parser.skip_whitespace();
+    if parser.is_finished() && value.is_finite() {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+fn looks_like_math(expression: &str) -> bool {
+    let mut has_digit = false;
+    let mut has_operator = false;
+    for character in expression.chars() {
+        if character.is_ascii_digit() {
+            has_digit = true;
+            continue;
+        }
+
+        if matches!(character, '+' | '-' | '*' | '/' | '.' | '(' | ')' | ' ') {
+            has_operator |= matches!(character, '+' | '-' | '*' | '/');
+            continue;
+        }
+
+        return false;
+    }
+
+    has_digit && has_operator
+}
+
+fn format_number(value: f64) -> String {
+    if value.fract().abs() < f64::EPSILON {
+        format!("{value:.0}")
+    } else {
+        let formatted = format!("{value:.6}");
+        formatted
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string()
+    }
+}
+
+struct ArithmeticParser<'a> {
+    expression: &'a str,
+    offset: usize,
+}
+
+impl<'a> ArithmeticParser<'a> {
+    fn new(expression: &'a str) -> Self {
+        Self {
+            expression,
+            offset: 0,
+        }
+    }
+
+    fn parse_expression(&mut self) -> Option<f64> {
+        let mut value = self.parse_term()?;
+        loop {
+            self.skip_whitespace();
+            if self.consume('+') {
+                value += self.parse_term()?;
+            } else if self.consume('-') {
+                value -= self.parse_term()?;
+            } else {
+                return Some(value);
+            }
+        }
+    }
+
+    fn parse_term(&mut self) -> Option<f64> {
+        let mut value = self.parse_factor()?;
+        loop {
+            self.skip_whitespace();
+            if self.consume('*') {
+                value *= self.parse_factor()?;
+            } else if self.consume('/') {
+                let divisor = self.parse_factor()?;
+                if divisor == 0.0 {
+                    return None;
+                }
+                value /= divisor;
+            } else {
+                return Some(value);
+            }
+        }
+    }
+
+    fn parse_factor(&mut self) -> Option<f64> {
+        self.skip_whitespace();
+        if self.consume('(') {
+            let value = self.parse_expression()?;
+            self.skip_whitespace();
+            return self.consume(')').then_some(value);
+        }
+
+        let start = self.offset;
+        if self.peek() == Some('-') {
+            self.offset += 1;
+        }
+
+        while matches!(self.peek(), Some(character) if character.is_ascii_digit() || character == '.')
+        {
+            self.offset += 1;
+        }
+
+        if self.offset == start || self.expression[start..self.offset] == *"-" {
+            return None;
+        }
+
+        self.expression[start..self.offset].parse().ok()
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self.peek() == Some(' ') {
+            self.offset += 1;
+        }
+    }
+
+    fn consume(&mut self, expected: char) -> bool {
+        if self.peek() == Some(expected) {
+            self.offset += expected.len_utf8();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.expression[self.offset..].chars().next()
+    }
+
+    fn is_finished(&self) -> bool {
+        self.offset == self.expression.len()
     }
 }
 

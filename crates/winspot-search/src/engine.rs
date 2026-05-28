@@ -6,7 +6,10 @@ use std::{
 use winspot_core::SearchResult;
 
 use crate::{
-    providers::{BuiltinCommandProvider, FileSystemProvider, SearchProvider, StartMenuAppProvider},
+    providers::{
+        BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
+        SearchProvider, StartMenuAppProvider,
+    },
     ranking::rank_results_with_usage,
     usage::UsageSnapshot,
 };
@@ -20,9 +23,10 @@ pub struct QueryCacheStats {
     pub entries: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SearchEngine {
     candidates: Vec<SearchResult>,
+    dynamic_providers: Vec<Arc<dyn DynamicSearchProvider>>,
     usage: UsageSnapshot,
     now_unix_seconds: u64,
     cache: Arc<Mutex<QueryCache>>,
@@ -66,6 +70,7 @@ impl SearchEngine {
     ) -> Self {
         Self {
             candidates,
+            dynamic_providers: Vec::new(),
             usage,
             now_unix_seconds,
             cache: Arc::new(Mutex::new(QueryCache::new(cache_limit))),
@@ -92,6 +97,11 @@ impl SearchEngine {
         Self::from_results_with_usage(candidates, usage, now_unix_seconds)
     }
 
+    pub fn with_dynamic_provider(mut self, provider: Arc<dyn DynamicSearchProvider>) -> Self {
+        self.dynamic_providers.push(provider);
+        self
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> Vec<SearchResult> {
         let key = QueryCacheKey::new(query, limit);
         if let Some(results) = self
@@ -103,13 +113,13 @@ impl SearchEngine {
             return results;
         }
 
-        let results = rank_results_with_usage(
-            query,
-            self.candidates.clone(),
-            limit,
-            &self.usage,
-            self.now_unix_seconds,
-        );
+        let mut candidates = self.candidates.clone();
+        for provider in &self.dynamic_providers {
+            candidates.extend(provider.search(query));
+        }
+
+        let results =
+            rank_results_with_usage(query, candidates, limit, &self.usage, self.now_unix_seconds);
         self.cache
             .lock()
             .expect("query cache lock is not poisoned")
@@ -132,6 +142,7 @@ impl Default for SearchEngine {
             Box::new(StartMenuAppProvider::default()),
             Box::new(FileSystemProvider::default()),
         ])
+        .with_dynamic_provider(Arc::new(CalculatorProvider))
     }
 }
 

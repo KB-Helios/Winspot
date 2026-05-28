@@ -88,6 +88,68 @@ mod windows_tests {
     }
 
     #[tokio::test]
+    async fn daemon_returns_dynamic_calculator_results() {
+        let pipe_name = format!(r"\\.\pipe\winspot-calculator-test-{}", std::process::id());
+        let server_name = pipe_name.clone();
+        let server = tokio::spawn(async move {
+            let engine = build_search_engine(&PipeConfig {
+                pipe_name: server_name.clone(),
+                usage_log_path: None,
+            })
+            .expect("build search engine");
+            serve_pipe_once(
+                PipeConfig {
+                    pipe_name: server_name,
+                    usage_log_path: None,
+                },
+                &engine,
+            )
+            .await
+            .expect("pipe server completes");
+        });
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+
+        let client = ClientOptions::new()
+            .open(&pipe_name)
+            .expect("connect to calculator test pipe");
+        let mut client = BufReader::new(client);
+
+        let request = IpcEnvelope::request(
+            "query-calculator",
+            IpcPayload::SearchStarted(SearchStarted {
+                query_id: "query-calculator".to_string(),
+                text: "2 + 2".to_string(),
+            }),
+        );
+        let mut request_json = serde_json::to_string(&request).expect("serialize request");
+        request_json.push('\n');
+        client
+            .get_mut()
+            .write_all(request_json.as_bytes())
+            .await
+            .expect("write request");
+
+        let mut line = String::new();
+        timeout(Duration::from_secs(2), client.read_line(&mut line))
+            .await
+            .expect("response before timeout")
+            .expect("read response");
+
+        let response: IpcEnvelope = serde_json::from_str(line.trim()).expect("decode response");
+        match response.payload {
+            IpcPayload::ResultBatch(batch) => {
+                assert_eq!(batch.query_id, "query-calculator");
+                assert_eq!(batch.results[0].title, "2 + 2 = 4");
+                assert_eq!(batch.results[0].primary_action, ActionKind::Copy);
+            }
+            other => panic!("expected ResultBatch, got {other:?}"),
+        }
+
+        server.await.expect("server task joins");
+    }
+
+    #[tokio::test]
     async fn daemon_records_usage_after_successful_action() {
         let pipe_name = format!(r"\\.\pipe\winspot-action-test-{}", std::process::id());
         let usage_log_path =
