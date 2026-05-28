@@ -8,8 +8,8 @@ mod windows_tests {
         time::timeout,
     };
     use winspot_core::{
-        ActionKind, ActionRequested, IpcEnvelope, IpcPayload, SearchResult, SearchResultKind,
-        SearchStarted,
+        ActionKind, ActionRequested, IpcEnvelope, IpcPayload, PreviewRequested, SearchResult,
+        SearchResultKind, SearchStarted,
     };
     use winspot_daemon::server::{PipeConfig, build_search_engine, serve_pipe_once};
     use winspot_search::{
@@ -157,6 +157,73 @@ mod windows_tests {
         assert_eq!(signal.launch_count, 1);
 
         fs::remove_file(usage_log_path).expect("cleanup usage log");
+    }
+
+    #[tokio::test]
+    async fn daemon_returns_metadata_preview_for_selected_result() {
+        let pipe_name = format!(r"\\.\pipe\winspot-preview-test-{}", std::process::id());
+        let server_name = pipe_name.clone();
+        let server = tokio::spawn(async move {
+            let engine = SearchEngine::from_results(Vec::new());
+            serve_pipe_once(
+                PipeConfig {
+                    pipe_name: server_name,
+                    usage_log_path: None,
+                },
+                &engine,
+            )
+            .await
+            .expect("pipe server completes");
+        });
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+
+        let client = ClientOptions::new()
+            .open(&pipe_name)
+            .expect("connect to preview test pipe");
+        let mut client = BufReader::new(client);
+
+        let request = IpcEnvelope::request(
+            "preview-1",
+            IpcPayload::PreviewRequested(PreviewRequested {
+                preview_id: "preview-1".to_string(),
+                result: SearchResult {
+                    id: "file:C:\\Users\\kevin\\Desktop\\Roadmap.md".to_string(),
+                    title: "Roadmap.md".to_string(),
+                    subtitle: "C:\\Users\\kevin\\Desktop\\Roadmap.md".to_string(),
+                    kind: SearchResultKind::File,
+                    score: 123.0,
+                    primary_action: ActionKind::Open,
+                },
+            }),
+        );
+        let mut request_json = serde_json::to_string(&request).expect("serialize preview request");
+        request_json.push('\n');
+        client
+            .get_mut()
+            .write_all(request_json.as_bytes())
+            .await
+            .expect("write preview request");
+
+        let mut line = String::new();
+        timeout(Duration::from_secs(2), client.read_line(&mut line))
+            .await
+            .expect("preview response before timeout")
+            .expect("read preview response");
+
+        let response: IpcEnvelope =
+            serde_json::from_str(line.trim()).expect("decode preview response");
+        match response.payload {
+            IpcPayload::PreviewReady(preview) => {
+                assert_eq!(preview.preview_id, "preview-1");
+                assert_eq!(preview.title, "Roadmap.md");
+                assert!(preview.body.contains("Kind: File"));
+                assert!(preview.body.contains("Primary action: Open"));
+            }
+            other => panic!("expected PreviewReady, got {other:?}"),
+        }
+
+        server.await.expect("server task joins");
     }
 
     #[test]

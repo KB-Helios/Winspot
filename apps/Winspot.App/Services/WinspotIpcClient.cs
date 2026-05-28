@@ -108,6 +108,52 @@ public sealed class WinspotIpcClient
         return completed.Message;
     }
 
+    public async Task<PreviewItem?> GetPreviewAsync(
+        SearchResultItem result,
+        CancellationToken cancellationToken)
+    {
+        await using var pipe = new NamedPipeClientStream(
+            ".",
+            PipeName,
+            PipeDirection.InOut,
+            PipeOptions.Asynchronous);
+
+        await pipe.ConnectAsync(750, cancellationToken);
+
+        await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
+        using var reader = new StreamReader(pipe, leaveOpen: true);
+
+        var requestId = Guid.NewGuid().ToString("N");
+        var request = new IpcEnvelope(
+            ProtocolVersion,
+            requestId,
+            new IpcPayload(
+                "PreviewRequested",
+                JsonSerializer.SerializeToElement(
+                    new PreviewRequested(
+                        requestId,
+                        result),
+                    JsonOptions)));
+
+        var requestJson = JsonSerializer.Serialize(request, JsonOptions);
+        await writer.WriteLineAsync(requestJson.AsMemory(), cancellationToken);
+
+        var line = await reader.ReadLineAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return null;
+        }
+
+        var response = JsonSerializer.Deserialize<IpcEnvelope>(line, JsonOptions);
+        if (response?.Payload.Type != "PreviewReady")
+        {
+            return null;
+        }
+
+        var preview = response.Payload.Data.Deserialize<PreviewReady>(JsonOptions);
+        return preview is null ? null : new PreviewItem(preview.Title, preview.Body);
+    }
+
     private sealed record IpcEnvelope(
         int ProtocolVersion,
         string RequestId,
@@ -127,6 +173,16 @@ public sealed class WinspotIpcClient
         string ActionId,
         bool Succeeded,
         string Message);
+
+    private sealed record PreviewRequested(
+        string PreviewId,
+        SearchResultItem Result);
+
+    private sealed record PreviewReady(
+        string PreviewId,
+        string Title,
+        string Body,
+        bool IsFinal);
 
     private sealed record ResultBatch(
         string QueryId,

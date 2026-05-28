@@ -11,7 +11,8 @@ use tokio::{
     net::windows::named_pipe::ServerOptions,
 };
 use winspot_core::{
-    ActionCompleted, ActionKind, ActionRequested, IpcEnvelope, IpcPayload, ResultBatch,
+    ActionCompleted, ActionKind, ActionRequested, IpcEnvelope, IpcPayload, PreviewReady,
+    PreviewRequested, ResultBatch, SearchResult,
 };
 use winspot_search::{
     engine::SearchEngine,
@@ -115,6 +116,10 @@ fn handle_line(
                 IpcPayload::ActionCompleted(completed),
             ))
         }
+        IpcPayload::PreviewRequested(preview) => Ok(IpcEnvelope::request(
+            request_id,
+            IpcPayload::PreviewReady(build_preview(preview)),
+        )),
         _ => Ok(IpcEnvelope::request(
             request_id,
             IpcPayload::Error(winspot_core::ipc::IpcError {
@@ -123,6 +128,22 @@ fn handle_line(
             }),
         )),
     }
+}
+
+fn build_preview(preview: PreviewRequested) -> PreviewReady {
+    PreviewReady {
+        preview_id: preview.preview_id,
+        title: preview.result.title.clone(),
+        body: metadata_preview_body(&preview.result),
+        is_final: true,
+    }
+}
+
+fn metadata_preview_body(result: &SearchResult) -> String {
+    format!(
+        "Kind: {:?}\nPrimary action: {:?}\nLocation: {}\nScore: {:.1}",
+        result.kind, result.primary_action, result.subtitle, result.score
+    )
 }
 
 fn handle_action(action: ActionRequested, config: &PipeConfig) -> ActionCompleted {

@@ -29,6 +29,8 @@ pub enum IpcPayload {
     ResultBatch(ResultBatch),
     ActionRequested(ActionRequested),
     ActionCompleted(ActionCompleted),
+    PreviewRequested(PreviewRequested),
+    PreviewReady(PreviewReady),
     Error(IpcError),
 }
 
@@ -62,6 +64,22 @@ pub struct ActionCompleted {
     pub action_id: String,
     pub succeeded: bool,
     pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewRequested {
+    pub preview_id: String,
+    pub result: SearchResult,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewReady {
+    pub preview_id: String,
+    pub title: String,
+    pub body: String,
+    pub is_final: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

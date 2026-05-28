@@ -10,8 +10,14 @@
 
     <Grid
         Padding="20"
+        ColumnSpacing="16"
         KeyDown="OnLauncherKeyDown"
         RowSpacing="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*" MinWidth="360" />
+            <ColumnDefinition Width="*" MinWidth="260" />
+        </Grid.ColumnDefinitions>
+
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -23,6 +29,7 @@
             AutomationProperties.AutomationId="WinspotSearchBox"
             AutomationProperties.Name="Winspot search"
             FontSize="22"
+            Grid.ColumnSpan="2"
             Header="Search"
             PlaceholderText="Search apps, files, commands, and plugins"
             Text="{x:Bind ViewModel.Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -60,8 +67,33 @@
             </ListView.ItemTemplate>
         </ListView>
 
+        <Border
+            Grid.Row="1"
+            Grid.Column="1"
+            Padding="14"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+            <ScrollViewer>
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        AutomationProperties.AutomationId="WinspotPreviewTitle"
+                        FontSize="16"
+                        FontWeight="SemiBold"
+                        Text="{x:Bind ViewModel.Preview.Title, Mode=OneWay, FallbackValue=Preview}" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="WinspotPreviewBody"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind ViewModel.Preview.Body, Mode=OneWay, FallbackValue=Select a result to preview}"
+                        TextWrapping="WrapWholeWords" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
         <TextBlock
             Grid.Row="2"
+            Grid.ColumnSpan="2"
             AutomationProperties.AutomationId="WinspotStatusText"
             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
             Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />

@@ -1,6 +1,6 @@
 use winspot_core::{
-    ActionKind, ActionRequested, IpcEnvelope, IpcPayload, SearchResult, SearchResultKind,
-    SearchStarted,
+    ActionKind, ActionRequested, IpcEnvelope, IpcPayload, PreviewRequested, SearchResult,
+    SearchResultKind, SearchStarted,
 };
 
 #[test]
@@ -61,5 +61,37 @@ fn action_request_round_trips_selected_result_metadata() {
             assert_eq!(action.primary_action, ActionKind::RunCommand);
         }
         other => panic!("expected ActionRequested, got {other:?}"),
+    }
+}
+
+#[test]
+fn preview_request_round_trips_selected_result_metadata() {
+    let result = SearchResult {
+        id: "file:C:\\Users\\kevin\\Desktop\\Roadmap.md".to_string(),
+        title: "Roadmap.md".to_string(),
+        subtitle: "C:\\Users\\kevin\\Desktop\\Roadmap.md".to_string(),
+        kind: SearchResultKind::File,
+        score: 42.0,
+        primary_action: ActionKind::Open,
+    };
+    let envelope = IpcEnvelope::request(
+        "preview-1",
+        IpcPayload::PreviewRequested(PreviewRequested {
+            preview_id: "preview-1".to_string(),
+            result,
+        }),
+    );
+
+    let json = serde_json::to_string(&envelope).expect("serialize preview envelope");
+    assert!(json.contains("\"type\":\"PreviewRequested\""));
+    assert!(json.contains("\"previewId\":\"preview-1\""));
+
+    let decoded: IpcEnvelope = serde_json::from_str(&json).expect("deserialize preview envelope");
+    match decoded.payload {
+        IpcPayload::PreviewRequested(preview) => {
+            assert_eq!(preview.preview_id, "preview-1");
+            assert_eq!(preview.result.title, "Roadmap.md");
+        }
+        other => panic!("expected PreviewRequested, got {other:?}"),
     }
 }

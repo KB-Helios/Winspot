@@ -12,7 +12,9 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private readonly WinspotIpcClient _ipcClient;
     private CancellationTokenSource? _queryCancellation;
     private CancellationTokenSource? _actionCancellation;
+    private CancellationTokenSource? _previewCancellation;
     private string _query = string.Empty;
+    private PreviewItem? _preview;
     private SearchResultItem? _selectedResult;
     private string _statusText = "Start typing to search";
 
@@ -40,7 +42,19 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     public SearchResultItem? SelectedResult
     {
         get => _selectedResult;
-        set => SetField(ref _selectedResult, value);
+        set
+        {
+            if (SetField(ref _selectedResult, value))
+            {
+                _ = RefreshPreviewAsync(value);
+            }
+        }
+    }
+
+    public PreviewItem? Preview
+    {
+        get => _preview;
+        private set => SetField(ref _preview, value);
     }
 
     public string StatusText
@@ -89,6 +103,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             Results.Clear();
             SelectedResult = null;
+            Preview = null;
             StatusText = "Start typing to search";
             return;
         }
@@ -120,7 +135,39 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             Results.Clear();
             SelectedResult = null;
+            Preview = null;
             StatusText = $"Backend unavailable: {ex.Message}";
+        }
+    }
+
+    private async Task RefreshPreviewAsync(SearchResultItem? result)
+    {
+        _previewCancellation?.Cancel();
+        _previewCancellation = new CancellationTokenSource();
+        var cancellationToken = _previewCancellation.Token;
+
+        if (result is null)
+        {
+            Preview = null;
+            return;
+        }
+
+        Preview = new PreviewItem(result.Title, "Loading preview");
+
+        try
+        {
+            var preview = await _ipcClient.GetPreviewAsync(result, cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                Preview = preview ?? new PreviewItem(result.Title, "No preview available");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Preview = new PreviewItem(result.Title, $"Preview unavailable: {ex.Message}");
         }
     }
 
