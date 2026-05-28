@@ -1,4 +1,4 @@
-use winspot_daemon::server::{serve_forever, PipeConfig};
+use winspot_daemon::server::{PipeConfig, serve_forever};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

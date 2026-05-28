@@ -1,20 +1,38 @@
 use winspot_core::SearchResult;
 
 use crate::{
-    providers::{BuiltinCommandProvider, StartMenuAppProvider},
+    providers::{BuiltinCommandProvider, SearchProvider, StartMenuAppProvider},
     ranking::rank_results,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct SearchEngine {
-    command_provider: BuiltinCommandProvider,
-    app_provider: StartMenuAppProvider,
+    candidates: Vec<SearchResult>,
 }
 
 impl SearchEngine {
+    pub fn from_results(candidates: Vec<SearchResult>) -> Self {
+        Self { candidates }
+    }
+
+    pub fn from_providers(providers: Vec<Box<dyn SearchProvider>>) -> Self {
+        let candidates = providers
+            .into_iter()
+            .flat_map(|provider| provider.collect_results())
+            .collect();
+        Self { candidates }
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> Vec<SearchResult> {
-        let mut results = self.command_provider.collect_results();
-        results.extend(self.app_provider.collect_results());
-        rank_results(query, results, limit)
+        rank_results(query, self.candidates.clone(), limit)
+    }
+}
+
+impl Default for SearchEngine {
+    fn default() -> Self {
+        Self::from_providers(vec![
+            Box::new(BuiltinCommandProvider),
+            Box::new(StartMenuAppProvider::default()),
+        ])
     }
 }

@@ -5,11 +5,21 @@ use std::{
 
 use winspot_core::{ActionKind, SearchResult, SearchResultKind};
 
+pub trait SearchProvider {
+    fn collect_results(&self) -> Vec<SearchResult>;
+}
+
 #[derive(Debug, Default)]
 pub struct BuiltinCommandProvider;
 
 impl BuiltinCommandProvider {
     pub fn collect_results(&self) -> Vec<SearchResult> {
+        <Self as SearchProvider>::collect_results(self)
+    }
+}
+
+impl SearchProvider for BuiltinCommandProvider {
+    fn collect_results(&self) -> Vec<SearchResult> {
         vec![
             SearchResult {
                 id: "command:calculator".to_string(),
@@ -48,6 +58,12 @@ impl StartMenuAppProvider {
     }
 
     pub fn collect_results(&self) -> Vec<SearchResult> {
+        <Self as SearchProvider>::collect_results(self)
+    }
+}
+
+impl SearchProvider for StartMenuAppProvider {
+    fn collect_results(&self) -> Vec<SearchResult> {
         let mut results = Vec::new();
         for root in &self.roots {
             collect_shortcuts(root, &mut results);

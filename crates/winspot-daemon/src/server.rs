@@ -3,9 +3,7 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::windows::named_pipe::ServerOptions,
 };
-use winspot_core::{
-    IpcEnvelope, IpcPayload, ResultBatch,
-};
+use winspot_core::{IpcEnvelope, IpcPayload, ResultBatch};
 use winspot_search::engine::SearchEngine;
 
 #[derive(Debug, Clone)]
@@ -22,12 +20,13 @@ impl Default for PipeConfig {
 }
 
 pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
+    let engine = SearchEngine::default();
     loop {
-        serve_pipe_once(config.clone()).await?;
+        serve_pipe_once(config.clone(), &engine).await?;
     }
 }
 
-pub async fn serve_pipe_once(config: PipeConfig) -> anyhow::Result<()> {
+pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
     let server = ServerOptions::new()
         .first_pipe_instance(false)
         .create(&config.pipe_name)
@@ -42,7 +41,7 @@ pub async fn serve_pipe_once(config: PipeConfig) -> anyhow::Result<()> {
     let mut line = String::new();
     reader.read_line(&mut line).await.context("read IPC line")?;
 
-    let response = handle_line(line.trim())?;
+    let response = handle_line(line.trim(), engine)?;
     let mut response_json = serde_json::to_string(&response).context("serialize response")?;
     response_json.push('\n');
     reader
@@ -50,12 +49,16 @@ pub async fn serve_pipe_once(config: PipeConfig) -> anyhow::Result<()> {
         .write_all(response_json.as_bytes())
         .await
         .context("write IPC response")?;
-    reader.get_mut().flush().await.context("flush IPC response")?;
+    reader
+        .get_mut()
+        .flush()
+        .await
+        .context("flush IPC response")?;
 
     Ok(())
 }
 
-fn handle_line(line: &str) -> anyhow::Result<IpcEnvelope> {
+fn handle_line(line: &str, engine: &SearchEngine) -> anyhow::Result<IpcEnvelope> {
     let envelope: IpcEnvelope = serde_json::from_str(line).context("decode IPC envelope")?;
     let request_id = envelope.request_id.clone();
 
@@ -64,9 +67,12 @@ fn handle_line(line: &str) -> anyhow::Result<IpcEnvelope> {
             let batch = ResultBatch {
                 query_id: search.query_id,
                 is_final: true,
-                results: SearchEngine::default().search(&search.text, 20),
+                results: engine.search(&search.text, 20),
             };
-            Ok(IpcEnvelope::request(request_id, IpcPayload::ResultBatch(batch)))
+            Ok(IpcEnvelope::request(
+                request_id,
+                IpcPayload::ResultBatch(batch),
+            ))
         }
         _ => Ok(IpcEnvelope::request(
             request_id,
