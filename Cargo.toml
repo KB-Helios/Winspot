@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "crates/winspot-core",
-    "crates/winspot-daemon"
+    "crates/winspot-daemon",
+    "crates/winspot-search"
 ]
 resolver = "3"
 
@@ -16,3 +17,4 @@ serde_json = "1"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 winspot-core = { path = "crates/winspot-core" }
+winspot-search = { path = "crates/winspot-search" }
