@@ -20,4 +20,8 @@ public sealed record SearchResultItem(
     };
 
     public string IconLabel => $"{Kind} result";
+
+    public string? IconPath => Kind == "App" && Id.StartsWith("app:", StringComparison.Ordinal)
+        ? Id["app:".Length..]
+        : null;
 }

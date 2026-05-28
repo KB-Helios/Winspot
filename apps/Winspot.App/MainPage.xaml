@@ -69,11 +69,19 @@
                             VerticalAlignment="Center"
                             Background="{ThemeResource LayerFillColorDefaultBrush}"
                             CornerRadius="6">
-                            <FontIcon
-                                AutomationProperties.Name="{x:Bind IconLabel}"
-                                FontFamily="Segoe Fluent Icons"
-                                FontSize="14"
-                                Glyph="{x:Bind IconGlyph}" />
+                            <Grid>
+                                <FontIcon
+                                    AutomationProperties.Name="{x:Bind IconLabel}"
+                                    FontFamily="Segoe Fluent Icons"
+                                    FontSize="14"
+                                    Glyph="{x:Bind IconGlyph}" />
+                                <Image
+                                    Width="28"
+                                    Height="28"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Loaded="OnResultIconImageLoaded"
+                                    Stretch="Uniform" />
+                            </Grid>
                         </Border>
 
                         <StackPanel
