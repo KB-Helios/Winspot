@@ -76,6 +76,114 @@ struct WindowsSetting {
     uri: &'static str,
 }
 
+const UNIT_DEFINITIONS: &[UnitDefinition] = &[
+    UnitDefinition {
+        aliases: &["m", "meter", "meters", "metre", "metres"],
+        symbol: "m",
+        dimension: UnitDimension::Length,
+        scale: UnitScale::Linear { to_base: 1.0 },
+    },
+    UnitDefinition {
+        aliases: &["km", "kilometer", "kilometers", "kilometre", "kilometres"],
+        symbol: "km",
+        dimension: UnitDimension::Length,
+        scale: UnitScale::Linear { to_base: 1000.0 },
+    },
+    UnitDefinition {
+        aliases: &["cm", "centimeter", "centimeters", "centimetre", "centimetres"],
+        symbol: "cm",
+        dimension: UnitDimension::Length,
+        scale: UnitScale::Linear { to_base: 0.01 },
+    },
+    UnitDefinition {
+        aliases: &["mi", "mile", "miles"],
+        symbol: "mi",
+        dimension: UnitDimension::Length,
+        scale: UnitScale::Linear { to_base: 1609.344 },
+    },
+    UnitDefinition {
+        aliases: &["ft", "foot", "feet"],
+        symbol: "ft",
+        dimension: UnitDimension::Length,
+        scale: UnitScale::Linear { to_base: 0.3048 },
+    },
+    UnitDefinition {
+        aliases: &["in", "inch", "inches"],
+        symbol: "in",
+        dimension: UnitDimension::Length,
+        scale: UnitScale::Linear { to_base: 0.0254 },
+    },
+    UnitDefinition {
+        aliases: &["kg", "kilogram", "kilograms"],
+        symbol: "kg",
+        dimension: UnitDimension::Mass,
+        scale: UnitScale::Linear { to_base: 1.0 },
+    },
+    UnitDefinition {
+        aliases: &["g", "gram", "grams"],
+        symbol: "g",
+        dimension: UnitDimension::Mass,
+        scale: UnitScale::Linear { to_base: 0.001 },
+    },
+    UnitDefinition {
+        aliases: &["lb", "lbs", "pound", "pounds"],
+        symbol: "lb",
+        dimension: UnitDimension::Mass,
+        scale: UnitScale::Linear {
+            to_base: 0.45359237,
+        },
+    },
+    UnitDefinition {
+        aliases: &["oz", "ounce", "ounces"],
+        symbol: "oz",
+        dimension: UnitDimension::Mass,
+        scale: UnitScale::Linear {
+            to_base: 0.028349523125,
+        },
+    },
+    UnitDefinition {
+        aliases: &["c", "celsius"],
+        symbol: "C",
+        dimension: UnitDimension::Temperature,
+        scale: UnitScale::Celsius,
+    },
+    UnitDefinition {
+        aliases: &["f", "fahrenheit"],
+        symbol: "F",
+        dimension: UnitDimension::Temperature,
+        scale: UnitScale::Fahrenheit,
+    },
+    UnitDefinition {
+        aliases: &["k", "kelvin"],
+        symbol: "K",
+        dimension: UnitDimension::Temperature,
+        scale: UnitScale::Kelvin,
+    },
+];
+
+#[derive(Debug, Clone, Copy)]
+struct UnitDefinition {
+    aliases: &'static [&'static str],
+    symbol: &'static str,
+    dimension: UnitDimension,
+    scale: UnitScale,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnitDimension {
+    Length,
+    Mass,
+    Temperature,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum UnitScale {
+    Linear { to_base: f64 },
+    Celsius,
+    Fahrenheit,
+    Kelvin,
+}
+
 #[derive(Debug, Default)]
 pub struct BuiltinCommandProvider;
 
@@ -261,6 +369,36 @@ impl DynamicSearchProvider for CalculatorProvider {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct UnitConversionProvider;
+
+impl DynamicSearchProvider for UnitConversionProvider {
+    fn search(&self, query: &str) -> Vec<SearchResult> {
+        let Some(conversion) = parse_unit_conversion(query) else {
+            return Vec::new();
+        };
+
+        vec![SearchResult {
+            id: format!(
+                "conversion:{}:{}:{}",
+                conversion.input_value, conversion.from.symbol, conversion.to.symbol
+            ),
+            title: format!(
+                "{} {} to {} = {} {}",
+                format_number(conversion.input_value),
+                conversion.from.symbol,
+                conversion.to.symbol,
+                format_number(conversion.output_value),
+                conversion.to.symbol
+            ),
+            subtitle: "Unit conversion".to_string(),
+            kind: SearchResultKind::Command,
+            score: 0.0,
+            primary_action: ActionKind::Copy,
+        }]
+    }
+}
+
 fn default_start_menu_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(program_data) = env::var("ProgramData") {
@@ -359,6 +497,113 @@ fn format_number(value: f64) -> String {
             .trim_end_matches('0')
             .trim_end_matches('.')
             .to_string()
+    }
+}
+
+struct UnitConversion {
+    input_value: f64,
+    output_value: f64,
+    from: &'static UnitDefinition,
+    to: &'static UnitDefinition,
+}
+
+fn parse_unit_conversion(query: &str) -> Option<UnitConversion> {
+    let normalized = query.trim().to_lowercase();
+    let (input_value, rest) = parse_leading_number(&normalized)?;
+    let (from_text, to_text) = split_conversion_units(rest.trim())?;
+    let from = find_unit(from_text)?;
+    let to = find_unit(to_text)?;
+    let output_value = convert_units(input_value, from, to)?;
+
+    Some(UnitConversion {
+        input_value,
+        output_value,
+        from,
+        to,
+    })
+}
+
+fn parse_leading_number(input: &str) -> Option<(f64, &str)> {
+    let mut end = 0;
+    let mut has_digit = false;
+
+    for (index, character) in input.char_indices() {
+        if character.is_ascii_digit() {
+            has_digit = true;
+            end = index + character.len_utf8();
+            continue;
+        }
+
+        if matches!(character, '+' | '-' | '.') {
+            end = index + character.len_utf8();
+            continue;
+        }
+
+        break;
+    }
+
+    if !has_digit || end == 0 {
+        return None;
+    }
+
+    let value = input[..end].parse().ok()?;
+    Some((value, &input[end..]))
+}
+
+fn split_conversion_units(input: &str) -> Option<(&str, &str)> {
+    input
+        .split_once(" to ")
+        .or_else(|| input.split_once(" in "))
+        .map(|(from, to)| (from.trim(), first_unit_token(to.trim())))
+        .filter(|(from, to)| !from.is_empty() && !to.is_empty())
+}
+
+fn first_unit_token(input: &str) -> &str {
+    input.split_whitespace().next().unwrap_or(input)
+}
+
+fn find_unit(input: &str) -> Option<&'static UnitDefinition> {
+    let unit = first_unit_token(input.trim());
+    UNIT_DEFINITIONS
+        .iter()
+        .find(|definition| definition.aliases.contains(&unit))
+}
+
+fn convert_units(
+    value: f64,
+    from: &'static UnitDefinition,
+    to: &'static UnitDefinition,
+) -> Option<f64> {
+    if from.dimension != to.dimension {
+        return None;
+    }
+
+    match (from.scale, to.scale) {
+        (UnitScale::Linear { to_base: from_base }, UnitScale::Linear { to_base }) => {
+            Some(value * from_base / to_base)
+        }
+        _ => {
+            let celsius = to_celsius(value, from.scale)?;
+            from_celsius(celsius, to.scale)
+        }
+    }
+}
+
+fn to_celsius(value: f64, scale: UnitScale) -> Option<f64> {
+    match scale {
+        UnitScale::Celsius => Some(value),
+        UnitScale::Fahrenheit => Some((value - 32.0) * 5.0 / 9.0),
+        UnitScale::Kelvin => Some(value - 273.15),
+        UnitScale::Linear { .. } => None,
+    }
+}
+
+fn from_celsius(value: f64, scale: UnitScale) -> Option<f64> {
+    match scale {
+        UnitScale::Celsius => Some(value),
+        UnitScale::Fahrenheit => Some(value * 9.0 / 5.0 + 32.0),
+        UnitScale::Kelvin => Some(value + 273.15),
+        UnitScale::Linear { .. } => None,
     }
 }
 

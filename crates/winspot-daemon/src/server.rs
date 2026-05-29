@@ -19,7 +19,7 @@ use winspot_search::{
     engine::SearchEngine,
     providers::{
         BuiltinCommandProvider, CalculatorProvider, FileSystemProvider, SearchProvider,
-        RunningProcessProvider, StartMenuAppProvider, WindowsSettingsProvider,
+        RunningProcessProvider, StartMenuAppProvider, UnitConversionProvider, WindowsSettingsProvider,
     },
     usage::{UsageEvent, UsageSnapshot, UsageStore},
 };
@@ -59,7 +59,8 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
         usage,
         current_unix_seconds(),
     )
-    .with_dynamic_provider(Arc::new(CalculatorProvider)))
+    .with_dynamic_provider(Arc::new(CalculatorProvider))
+    .with_dynamic_provider(Arc::new(UnitConversionProvider)))
 }
 
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {

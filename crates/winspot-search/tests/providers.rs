@@ -3,7 +3,7 @@ use std::fs;
 use winspot_core::{ActionKind, SearchResultKind};
 use winspot_search::providers::{
     BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
-    RunningProcessProvider, StartMenuAppProvider, WindowsSettingsProvider,
+    RunningProcessProvider, StartMenuAppProvider, UnitConversionProvider, WindowsSettingsProvider,
 };
 
 #[test]
@@ -111,6 +111,30 @@ fn calculator_provider_returns_result_for_arithmetic_expression() {
 #[test]
 fn calculator_provider_ignores_non_math_queries() {
     let results = CalculatorProvider::default().search("notepad");
+
+    assert!(results.is_empty());
+}
+
+#[test]
+fn unit_conversion_provider_converts_length_units() {
+    let results = UnitConversionProvider::default().search("10 km to mi");
+
+    assert_eq!(results[0].title, "10 km to mi = 6.213712 mi");
+    assert_eq!(results[0].subtitle, "Unit conversion");
+    assert_eq!(results[0].kind, SearchResultKind::Command);
+    assert_eq!(results[0].primary_action, ActionKind::Copy);
+}
+
+#[test]
+fn unit_conversion_provider_converts_temperature_units() {
+    let results = UnitConversionProvider::default().search("32 f to c");
+
+    assert_eq!(results[0].title, "32 F to C = 0 C");
+}
+
+#[test]
+fn unit_conversion_provider_ignores_mismatched_dimensions() {
+    let results = UnitConversionProvider::default().search("10 kg to mi");
 
     assert!(results.is_empty());
 }

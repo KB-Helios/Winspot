@@ -123,6 +123,14 @@ fn default_search_engine_includes_dynamic_calculator_results() {
 }
 
 #[test]
+fn default_search_engine_includes_unit_conversion_results() {
+    let results = SearchEngine::default().search("2 kg to lb", 5);
+
+    assert_eq!(results[0].title, "2 kg to lb = 4.409245 lb");
+    assert_eq!(results[0].primary_action, ActionKind::Copy);
+}
+
+#[test]
 fn default_search_engine_includes_windows_settings_results() {
     let results = SearchEngine::default().search("bluetooth", 5);
 

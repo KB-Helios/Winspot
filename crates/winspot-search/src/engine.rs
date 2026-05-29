@@ -9,6 +9,7 @@ use crate::{
     providers::{
         BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
         RunningProcessProvider, SearchProvider, StartMenuAppProvider, WindowsSettingsProvider,
+        UnitConversionProvider,
     },
     ranking::rank_results_with_usage,
     usage::UsageSnapshot,
@@ -145,6 +146,7 @@ impl Default for SearchEngine {
             Box::new(FileSystemProvider::default()),
         ])
         .with_dynamic_provider(Arc::new(CalculatorProvider))
+        .with_dynamic_provider(Arc::new(UnitConversionProvider))
     }
 }
 
