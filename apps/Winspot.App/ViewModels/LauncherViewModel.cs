@@ -9,7 +9,7 @@ namespace Winspot_App.ViewModels;
 
 public sealed class LauncherViewModel : INotifyPropertyChanged
 {
-    private readonly WinspotIpcClient _ipcClient;
+    private readonly IWinspotIpcClient _ipcClient;
     private CancellationTokenSource? _queryCancellation;
     private CancellationTokenSource? _actionCancellation;
     private CancellationTokenSource? _previewCancellation;
@@ -19,7 +19,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private SearchResultItem? _selectedResult;
     private string _statusText = "Start typing to search";
 
-    public LauncherViewModel(WinspotIpcClient ipcClient)
+    public LauncherViewModel(IWinspotIpcClient ipcClient)
     {
         _ipcClient = ipcClient;
     }
@@ -28,6 +28,8 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
     public ObservableCollection<SearchResultItem> Results { get; } = new();
 
+    public bool IsExpanded => !string.IsNullOrWhiteSpace(Query);
+
     public string Query
     {
         get => _query;
@@ -35,6 +37,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             if (SetField(ref _query, value))
             {
+                OnPropertyChanged(nameof(IsExpanded));
                 _ = RefreshAsync(value);
             }
         }
@@ -199,7 +202,12 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         }
 
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            OnPropertyChanged(propertyName);
         return true;
+    }
+
+    private void OnPropertyChanged(string? propertyName)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

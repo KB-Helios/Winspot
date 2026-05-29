@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 
 using Winspot_App.Models;
-using Windows.System;
 
 namespace Winspot_App.Services;
 
@@ -87,13 +86,46 @@ internal sealed class GlobalHotkeyService : IDisposable
             return false;
         }
 
-        if (!Enum.TryParse<VirtualKey>(binding.Key, true, out var virtualKey))
+        if (!TryParseVirtualKey(binding.Key, out key))
         {
             return false;
         }
 
-        key = (uint)virtualKey;
         return key != 0;
+    }
+
+    private static bool TryParseVirtualKey(string keyText, out uint key)
+    {
+        key = keyText.Trim().ToUpperInvariant() switch
+        {
+            "BACK" or "BACKSPACE" => 0x08,
+            "TAB" => 0x09,
+            "ENTER" or "RETURN" => 0x0D,
+            "ESC" or "ESCAPE" => 0x1B,
+            "SPACE" => 0x20,
+            "LEFT" => 0x25,
+            "UP" => 0x26,
+            "RIGHT" => 0x27,
+            "DOWN" => 0x28,
+            _ => 0,
+        };
+
+        if (key != 0)
+        {
+            return true;
+        }
+
+        if (keyText.Length == 1)
+        {
+            var character = char.ToUpperInvariant(keyText[0]);
+            if (character is >= 'A' and <= 'Z' or >= '0' and <= '9')
+            {
+                key = character;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private nint HotkeyWndProc(nint hWnd, uint message, nuint wParam, nint lParam)

@@ -1,9 +1,6 @@
 {
   "profiles": {
-    "Winspot.App (Package)": {
-      "commandName": "MsixPackage"
-    },
-    "Winspot.App (Unpackaged)": {
+    "Winspot.App": {
       "commandName": "Project"
     }
   }

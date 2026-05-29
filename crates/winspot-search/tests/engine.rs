@@ -3,7 +3,7 @@ use std::{cell::Cell, rc::Rc};
 use winspot_core::{ActionKind, SearchResult, SearchResultKind};
 use winspot_search::{
     engine::SearchEngine,
-    providers::{BuiltinCommandProvider, SearchProvider},
+    providers::{BuiltinCommandProvider, RunningProcessProvider, SearchProvider},
     usage::{UsageSignal, UsageSnapshot},
 };
 
@@ -142,12 +142,17 @@ fn default_search_engine_includes_windows_settings_results() {
 #[test]
 #[cfg(windows)]
 fn default_search_engine_includes_running_process_results() {
-    let results = SearchEngine::default().search("winspot", 20);
+    let process = RunningProcessProvider::default()
+        .collect_results()
+        .into_iter()
+        .next()
+        .expect("tasklist returns at least one running process");
+    let results = SearchEngine::default().search(&process.title, 50);
 
     assert!(
         results
             .iter()
-            .any(|result| result.kind == SearchResultKind::Process)
+            .any(|result| result.id == process.id && result.kind == SearchResultKind::Process)
     );
 }
 

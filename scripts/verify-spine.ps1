@@ -3,8 +3,11 @@ $ErrorActionPreference = 'Stop'
 Write-Host '== Rust tests =='
 rtk cargo test
 
-Write-Host '== WinUI build =='
+Write-Host '== Avalonia build =='
 rtk dotnet build apps/Winspot.App/Winspot.App.csproj -c Debug -p:Platform=x64
+
+Write-Host '== Avalonia view-model tests =='
+rtk proxy dotnet test apps/Winspot.App.Tests/Winspot.App.Tests.csproj -c Debug -v minimal
 
 Write-Host '== Manual launch check =='
 Write-Host '1. Run: rtk cargo run -p winspot-daemon'

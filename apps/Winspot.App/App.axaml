@@ -1,0 +1,27 @@
+<Application
+    x:Class="Winspot_App.App"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    RequestedThemeVariant="Dark">
+    <Application.Styles>
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <ColorPaletteResources
+                    x:Key="Dark"
+                    Accent="#72F1D6"
+                    ErrorText="#FFB4AB"
+                    RegionColor="#111318" />
+            </FluentTheme.Palettes>
+        </FluentTheme>
+    </Application.Styles>
+    <Application.Resources>
+        <Color x:Key="SystemAccentColor">#72F1D6</Color>
+        <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#72F1D6" />
+        <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#3BBEA4" />
+        <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#218C7A" />
+        <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#17665B" />
+        <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#9AF8E5" />
+        <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#C8FFF4" />
+        <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#EBFFFB" />
+    </Application.Resources>
+</Application>

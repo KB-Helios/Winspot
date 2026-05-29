@@ -1,7 +1,6 @@
 using System.Text.Json;
 
 using Winspot_App.Models;
-using Windows.Storage;
 
 namespace Winspot_App.Services;
 
@@ -58,18 +57,6 @@ internal sealed class LauncherSettingsStore
 
     private static string DefaultSettingsPath()
     {
-        try
-        {
-            var localFolder = ApplicationData.Current.LocalFolder.Path;
-            if (!string.IsNullOrWhiteSpace(localFolder))
-            {
-                return Path.Combine(localFolder, "settings.json");
-            }
-        }
-        catch
-        {
-        }
-
         var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
         if (string.IsNullOrWhiteSpace(localAppData))
         {
