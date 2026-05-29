@@ -3,7 +3,7 @@ use std::fs;
 use winspot_core::{ActionKind, SearchResultKind};
 use winspot_search::providers::{
     BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
-    StartMenuAppProvider, WindowsSettingsProvider,
+    RunningProcessProvider, StartMenuAppProvider, WindowsSettingsProvider,
 };
 
 #[test]
@@ -80,6 +80,23 @@ fn windows_settings_provider_exposes_common_settings_pages() {
             && result.primary_action == ActionKind::Open
     }));
     assert!(results.iter().any(|result| result.title == "Windows Update"));
+}
+
+#[test]
+fn running_process_provider_parses_tasklist_csv() {
+    let output = "\"notepad.exe\",\"1234\",\"Console\",\"1\",\"12,340 K\"\r\n\
+        \"Winspot.App.exe\",\"4321\",\"Console\",\"1\",\"98,000 K\"\r\n";
+
+    let results = RunningProcessProvider::collect_from_tasklist_csv(output);
+
+    assert!(results.iter().any(|result| {
+        result.title == "notepad.exe"
+            && result.id == "process:1234:notepad.exe"
+            && result.subtitle == "PID 1234 - 12,340 K"
+            && result.kind == SearchResultKind::Process
+            && result.primary_action == ActionKind::Copy
+    }));
+    assert!(results.iter().any(|result| result.title == "Winspot.App.exe"));
 }
 
 #[test]

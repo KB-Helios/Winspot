@@ -131,6 +131,18 @@ fn default_search_engine_includes_windows_settings_results() {
     }));
 }
 
+#[test]
+#[cfg(windows)]
+fn default_search_engine_includes_running_process_results() {
+    let results = SearchEngine::default().search("winspot", 20);
+
+    assert!(
+        results
+            .iter()
+            .any(|result| result.kind == SearchResultKind::Process)
+    );
+}
+
 struct CountingProvider {
     collection_count: Rc<Cell<u32>>,
 }

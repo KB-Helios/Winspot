@@ -8,7 +8,7 @@ use winspot_core::SearchResult;
 use crate::{
     providers::{
         BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
-        SearchProvider, StartMenuAppProvider, WindowsSettingsProvider,
+        RunningProcessProvider, SearchProvider, StartMenuAppProvider, WindowsSettingsProvider,
     },
     ranking::rank_results_with_usage,
     usage::UsageSnapshot,
@@ -140,6 +140,7 @@ impl Default for SearchEngine {
         Self::from_providers(vec![
             Box::new(BuiltinCommandProvider),
             Box::new(WindowsSettingsProvider),
+            Box::new(RunningProcessProvider),
             Box::new(StartMenuAppProvider::default()),
             Box::new(FileSystemProvider::default()),
         ])

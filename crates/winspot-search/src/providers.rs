@@ -1,6 +1,7 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 use winspot_core::{ActionKind, SearchResult, SearchResultKind};
@@ -204,6 +205,38 @@ impl SearchProvider for FileSystemProvider {
             }
         }
         results
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct RunningProcessProvider;
+
+impl RunningProcessProvider {
+    pub fn collect_results(&self) -> Vec<SearchResult> {
+        <Self as SearchProvider>::collect_results(self)
+    }
+
+    pub fn collect_from_tasklist_csv(output: &str) -> Vec<SearchResult> {
+        parse_tasklist_csv(output)
+    }
+}
+
+impl SearchProvider for RunningProcessProvider {
+    fn collect_results(&self) -> Vec<SearchResult> {
+        if !cfg!(windows) {
+            return Vec::new();
+        }
+
+        let Ok(output) = Command::new("tasklist").args(["/FO", "CSV", "/NH"]).output() else {
+            return Vec::new();
+        };
+
+        if !output.status.success() {
+            return Vec::new();
+        }
+
+        let csv = String::from_utf8_lossy(&output.stdout);
+        parse_tasklist_csv(&csv)
     }
 }
 
@@ -476,4 +509,60 @@ fn collect_file_system_entries(
             });
         }
     }
+}
+
+fn parse_tasklist_csv(output: &str) -> Vec<SearchResult> {
+    output
+        .lines()
+        .filter_map(parse_process_line)
+        .collect()
+}
+
+fn parse_process_line(line: &str) -> Option<SearchResult> {
+    let columns = parse_csv_line(line);
+    if columns.len() < 5 {
+        return None;
+    }
+
+    let image_name = columns[0].trim();
+    let pid = columns[1].trim();
+    let memory = columns[4].trim();
+
+    if image_name.is_empty() || pid.is_empty() || image_name == "Image Name" {
+        return None;
+    }
+
+    Some(SearchResult {
+        id: format!("process:{pid}:{image_name}"),
+        title: image_name.to_string(),
+        subtitle: format!("PID {pid} - {memory}"),
+        kind: SearchResultKind::Process,
+        score: 0.0,
+        primary_action: ActionKind::Copy,
+    })
+}
+
+fn parse_csv_line(line: &str) -> Vec<String> {
+    let mut columns = Vec::new();
+    let mut current = String::new();
+    let mut chars = line.chars().peekable();
+    let mut in_quotes = false;
+
+    while let Some(character) = chars.next() {
+        match character {
+            '"' if in_quotes && chars.peek() == Some(&'"') => {
+                current.push('"');
+                chars.next();
+            }
+            '"' => in_quotes = !in_quotes,
+            ',' if !in_quotes => {
+                columns.push(current);
+                current = String::new();
+            }
+            _ => current.push(character),
+        }
+    }
+
+    columns.push(current);
+    columns
 }

@@ -19,7 +19,7 @@ use winspot_search::{
     engine::SearchEngine,
     providers::{
         BuiltinCommandProvider, CalculatorProvider, FileSystemProvider, SearchProvider,
-        StartMenuAppProvider, WindowsSettingsProvider,
+        RunningProcessProvider, StartMenuAppProvider, WindowsSettingsProvider,
     },
     usage::{UsageEvent, UsageSnapshot, UsageStore},
 };
@@ -219,6 +219,7 @@ fn default_search_providers() -> Vec<Box<dyn SearchProvider>> {
     vec![
         Box::new(BuiltinCommandProvider),
         Box::new(WindowsSettingsProvider),
+        Box::new(RunningProcessProvider),
         Box::new(StartMenuAppProvider::default()),
         Box::new(FileSystemProvider::default()),
     ]

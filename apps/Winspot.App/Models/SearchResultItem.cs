@@ -16,6 +16,7 @@ public sealed record SearchResultItem(
         "Command" => "\uE756",
         "Setting" => "\uE713",
         "Plugin" => "\uE71B",
+        "Process" => "\uE9F5",
         _ => "\uE721",
     };
 

@@ -8,6 +8,7 @@ pub enum SearchResultKind {
     Command,
     Setting,
     Plugin,
+    Process,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
