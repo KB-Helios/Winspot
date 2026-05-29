@@ -5,7 +5,22 @@ using Winspot_App.Models;
 
 namespace Winspot_App.Services;
 
-public sealed class WinspotIpcClient
+public interface IWinspotIpcClient
+{
+    Task<IReadOnlyList<SearchResultItem>> SearchAsync(
+        string query,
+        CancellationToken cancellationToken);
+
+    Task<string> ExecuteAsync(
+        SearchResultItem result,
+        CancellationToken cancellationToken);
+
+    Task<PreviewItem?> GetPreviewAsync(
+        SearchResultItem result,
+        CancellationToken cancellationToken);
+}
+
+public sealed class WinspotIpcClient : IWinspotIpcClient
 {
     private const int ProtocolVersion = 1;
     private const string PipeName = "winspot-dev";

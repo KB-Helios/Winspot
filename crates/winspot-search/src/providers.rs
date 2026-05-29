@@ -266,7 +266,7 @@ impl SearchProvider for StartMenuAppProvider {
     fn collect_results(&self) -> Vec<SearchResult> {
         let mut results = Vec::new();
         for root in &self.roots {
-            collect_shortcuts(root, 0, &mut results);
+            collect_shortcuts(root, &mut results);
         }
         results
     }
