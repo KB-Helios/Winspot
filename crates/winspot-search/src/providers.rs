@@ -16,6 +16,65 @@ pub trait DynamicSearchProvider: Send + Sync {
 const DEFAULT_FILE_SYSTEM_MAX_DEPTH: usize = 2;
 const DEFAULT_FILE_SYSTEM_MAX_ENTRIES: usize = 500;
 
+const WINDOWS_SETTINGS: &[WindowsSetting] = &[
+    WindowsSetting {
+        title: "Settings",
+        subtitle: "Open Windows Settings",
+        uri: "ms-settings:",
+    },
+    WindowsSetting {
+        title: "Display settings",
+        subtitle: "Windows Settings > System > Display",
+        uri: "ms-settings:display",
+    },
+    WindowsSetting {
+        title: "Sound settings",
+        subtitle: "Windows Settings > System > Sound",
+        uri: "ms-settings:sound",
+    },
+    WindowsSetting {
+        title: "Bluetooth settings",
+        subtitle: "Windows Settings > Bluetooth & devices",
+        uri: "ms-settings:bluetooth",
+    },
+    WindowsSetting {
+        title: "Network settings",
+        subtitle: "Windows Settings > Network & internet",
+        uri: "ms-settings:network",
+    },
+    WindowsSetting {
+        title: "Apps settings",
+        subtitle: "Windows Settings > Apps > Installed apps",
+        uri: "ms-settings:appsfeatures",
+    },
+    WindowsSetting {
+        title: "Startup apps",
+        subtitle: "Windows Settings > Apps > Startup",
+        uri: "ms-settings:startupapps",
+    },
+    WindowsSetting {
+        title: "Default apps",
+        subtitle: "Windows Settings > Apps > Default apps",
+        uri: "ms-settings:defaultapps",
+    },
+    WindowsSetting {
+        title: "Privacy settings",
+        subtitle: "Windows Settings > Privacy & security",
+        uri: "ms-settings:privacy",
+    },
+    WindowsSetting {
+        title: "Windows Update",
+        subtitle: "Windows Settings > Windows Update",
+        uri: "ms-settings:windowsupdate",
+    },
+];
+
+struct WindowsSetting {
+    title: &'static str,
+    subtitle: &'static str,
+    uri: &'static str,
+}
+
 #[derive(Debug, Default)]
 pub struct BuiltinCommandProvider;
 
@@ -45,6 +104,31 @@ impl SearchProvider for BuiltinCommandProvider {
                 primary_action: ActionKind::RunCommand,
             },
         ]
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct WindowsSettingsProvider;
+
+impl WindowsSettingsProvider {
+    pub fn collect_results(&self) -> Vec<SearchResult> {
+        <Self as SearchProvider>::collect_results(self)
+    }
+}
+
+impl SearchProvider for WindowsSettingsProvider {
+    fn collect_results(&self) -> Vec<SearchResult> {
+        WINDOWS_SETTINGS
+            .iter()
+            .map(|setting| SearchResult {
+                id: format!("setting:{}", setting.uri),
+                title: setting.title.to_string(),
+                subtitle: setting.subtitle.to_string(),
+                kind: SearchResultKind::Setting,
+                score: 0.0,
+                primary_action: ActionKind::Open,
+            })
+            .collect()
     }
 }
 

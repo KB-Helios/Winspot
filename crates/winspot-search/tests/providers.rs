@@ -1,9 +1,9 @@
 use std::fs;
 
-use winspot_core::SearchResultKind;
+use winspot_core::{ActionKind, SearchResultKind};
 use winspot_search::providers::{
     BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
-    StartMenuAppProvider,
+    StartMenuAppProvider, WindowsSettingsProvider,
 };
 
 #[test]
@@ -67,6 +67,19 @@ fn file_system_provider_respects_entry_limit() {
     assert_eq!(results.len(), 1);
 
     fs::remove_dir_all(root).expect("cleanup test directory");
+}
+
+#[test]
+fn windows_settings_provider_exposes_common_settings_pages() {
+    let results = WindowsSettingsProvider::default().collect_results();
+
+    assert!(results.iter().any(|result| {
+        result.title == "Display settings"
+            && result.id == "setting:ms-settings:display"
+            && result.kind == SearchResultKind::Setting
+            && result.primary_action == ActionKind::Open
+    }));
+    assert!(results.iter().any(|result| result.title == "Windows Update"));
 }
 
 #[test]

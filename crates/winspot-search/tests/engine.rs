@@ -122,6 +122,15 @@ fn default_search_engine_includes_dynamic_calculator_results() {
     assert_eq!(results[0].primary_action, ActionKind::Copy);
 }
 
+#[test]
+fn default_search_engine_includes_windows_settings_results() {
+    let results = SearchEngine::default().search("bluetooth", 5);
+
+    assert!(results.iter().any(|result| {
+        result.title == "Bluetooth settings" && result.kind == SearchResultKind::Setting
+    }));
+}
+
 struct CountingProvider {
     collection_count: Rc<Cell<u32>>,
 }

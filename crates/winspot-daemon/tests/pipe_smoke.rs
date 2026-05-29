@@ -313,4 +313,19 @@ mod windows_tests {
 
         fs::remove_file(path).expect("cleanup usage log");
     }
+
+    #[test]
+    fn daemon_builds_search_engine_with_windows_settings() {
+        let engine = build_search_engine(&PipeConfig {
+            pipe_name: r"\\.\pipe\winspot-unused".to_string(),
+            usage_log_path: None,
+        })
+        .expect("build engine with settings");
+
+        let results = engine.search("windows update", 5);
+
+        assert!(results.iter().any(|result| {
+            result.title == "Windows Update" && result.kind == SearchResultKind::Setting
+        }));
+    }
 }
