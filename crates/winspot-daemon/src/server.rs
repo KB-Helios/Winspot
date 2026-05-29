@@ -196,8 +196,8 @@ fn open_action(action: &ActionRequested) -> anyhow::Result<String> {
         anyhow::bail!("Action target is missing");
     };
 
-    Command::new("cmd")
-        .args(["/C", "start", "", target])
+    Command::new("explorer")
+        .arg(target)
         .spawn()
         .with_context(|| format!("open {}", action.title))?;
     Ok(format!("Opened {}", action.title))
