@@ -26,9 +26,10 @@ public sealed class LauncherVisualStyleTests
     {
         var axaml = File.ReadAllText(FindMainWindowAxaml());
 
-        StringAssert.Contains(axaml, "Height=\"76\"");
-        StringAssert.Contains(axaml, "MinHeight=\"76\"");
+        StringAssert.Contains(axaml, "Height=\"72\"");
+        StringAssert.Contains(axaml, "MinHeight=\"72\"");
         StringAssert.Contains(axaml, "<Setter Property=\"Padding\" Value=\"18,0\" />");
+        StringAssert.Contains(axaml, "ScrollViewer.HorizontalScrollBarVisibility=\"Disabled\"");
         Assert.IsFalse(axaml.Contains("<Setter Property=\"Background\" Value=\"#FF151C28\" />"), "Compact search should not render as a second filled pill inside the spotlight surface.");
         Assert.IsFalse(axaml.Contains("<Setter Property=\"BorderBrush\" Value=\"#1FFFFFFF\" />"), "Compact search should not have a second border inside the spotlight surface.");
     }

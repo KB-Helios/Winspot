@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 
 using Avalonia;
 using Avalonia.Animation.Easings;
@@ -16,6 +17,7 @@ namespace Winspot_App;
 public sealed partial class MainWindow : Window
 {
     private static readonly TimeSpan RevealDuration = TimeSpan.FromMilliseconds(160);
+    private static readonly TimeSpan BoundsAnimationDuration = TimeSpan.FromMilliseconds(180);
     private static readonly CubicEaseOut RevealEasing = new();
 
     private CancellationTokenSource? _boundsAnimationCancellation;
@@ -44,7 +46,7 @@ public sealed partial class MainWindow : Window
     public void Reveal()
     {
         ApplyResponsiveBounds();
-        PlayRevealAnimation();
+        Dispatcher.UIThread.Post(PlayRevealAnimation, DispatcherPriority.Render);
         _ = Dispatcher.UIThread.InvokeAsync(() =>
         {
             FocusSearch();
@@ -194,34 +196,50 @@ public sealed partial class MainWindow : Window
 
         try
         {
+            var stopwatch = Stopwatch.StartNew();
+            var startWidth = Width;
             var startHeight = Height;
             var startPosition = Position;
             var targetPosition = LauncherWindowLayout.ToPixels(targetBounds, scaling);
-            Width = targetBounds.Width;
 
-            const int frames = 14;
-            for (var frame = 1; frame <= frames; frame++)
+            while (true)
             {
                 if (cancellation.IsCancellationRequested)
                 {
                     return;
                 }
 
-                var progress = frame / (double)frames;
-                var eased = 1 - Math.Pow(1 - progress, 3);
+                var progress = Math.Clamp(
+                    stopwatch.Elapsed.TotalMilliseconds / BoundsAnimationDuration.TotalMilliseconds,
+                    0,
+                    1);
+                var eased = EaseOutCubic(progress);
+                Width = startWidth + ((targetBounds.Width - startWidth) * eased);
                 Height = startHeight + ((targetBounds.Height - startHeight) * eased);
                 Position = new PixelPoint(
-                    targetPosition.X,
+                    (int)Math.Round(startPosition.X + ((targetPosition.X - startPosition.X) * eased)),
                     (int)Math.Round(startPosition.Y + ((targetPosition.Y - startPosition.Y) * eased)));
+
+                if (progress >= 1)
+                {
+                    break;
+                }
+
                 await Task.Delay(16, cancellation.Token).ConfigureAwait(true);
             }
 
+            Width = targetBounds.Width;
             Height = targetBounds.Height;
             Position = targetPosition;
         }
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private static double EaseOutCubic(double progress)
+    {
+        return 1 - Math.Pow(1 - progress, 3);
     }
 
     private void RegisterHotkey()

@@ -27,9 +27,9 @@ public sealed class LauncherWindowLayoutTests
         var bounds = CalculateBounds(new Rect(0, 0, 500, 400), isExpanded: false);
 
         Assert.AreEqual(452, bounds.Width);
-        Assert.AreEqual(76, bounds.Height);
+        Assert.AreEqual(72, bounds.Height);
         Assert.AreEqual(24, bounds.X);
-        Assert.AreEqual(138, bounds.Y);
+        Assert.AreEqual(140, bounds.Y);
     }
 
     private static Rect CalculateBounds(Rect workingArea, bool isExpanded)

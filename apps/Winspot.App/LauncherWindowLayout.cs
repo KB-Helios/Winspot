@@ -4,7 +4,7 @@ namespace Winspot_App;
 
 internal static class LauncherWindowLayout
 {
-    public const double CompactHeight = 76;
+    public const double CompactHeight = 72;
     public const double ExpandedHeight = 560;
 
     private const double MinimumWidth = 420;

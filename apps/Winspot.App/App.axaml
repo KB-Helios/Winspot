@@ -7,13 +7,13 @@
         <SimpleTheme />
     </Application.Styles>
     <Application.Resources>
-        <Color x:Key="SystemAccentColor">#72F1D6</Color>
-        <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#72F1D6" />
-        <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#3BBEA4" />
-        <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#218C7A" />
-        <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#17665B" />
-        <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#9AF8E5" />
-        <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#C8FFF4" />
-        <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#EBFFFB" />
+        <Color x:Key="SystemAccentColor">#9AB0CC</Color>
+        <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#9AB0CC" />
+        <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#7F95B1" />
+        <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#627894" />
+        <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#45566E" />
+        <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#B7C7DA" />
+        <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#D4DEE9" />
+        <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#EEF3F8" />
     </Application.Resources>
 </Application>

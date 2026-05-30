@@ -7,9 +7,9 @@
     xmlns:vm="using:Winspot_App.ViewModels"
     Title="Winspot"
     Width="760"
-    Height="76"
+    Height="72"
     MinWidth="420"
-    MinHeight="76"
+    MinHeight="72"
     Background="Transparent"
     CanResize="False"
     ExtendClientAreaToDecorationsHint="True"
@@ -34,10 +34,11 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CaretBrush" Value="#FFE8EDF7" />
             <Setter Property="Foreground" Value="#FFE8EDF7" />
-            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontSize" Value="17" />
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="SelectionBrush" Value="#665F6F84" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
         <Style Selector="ListBox.results-list">
@@ -48,6 +49,8 @@
         <Style Selector="ListBoxItem">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="#FFFFFFFF" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
         </Style>
 
         <Style Selector="ListBoxItem:pointerover">
@@ -72,13 +75,13 @@
         <Border
             x:Name="SpotlightSurface"
             Classes="spotlight-surface"
-            Margin="8"
+            Margin="6"
             Padding="0"
             Background="#FF111620"
             BorderBrush="#26FFFFFF"
             BorderThickness="1"
-            BoxShadow="0 14 38 0 #78000000"
-            CornerRadius="20">
+            BoxShadow="0 16 40 0 #70000000"
+            CornerRadius="18">
             <Grid RowDefinitions="Auto,*" RowSpacing="8">
                 <Border Classes="search-shell">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
@@ -95,6 +98,7 @@
                             Classes="query-box"
                             AutomationProperties.AutomationId="WinspotSearchBox"
                             AutomationProperties.Name="Winspot search"
+                            VerticalAlignment="Center"
                             Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                             PlaceholderText="Search apps, files, commands, and plugins" />
 
@@ -126,6 +130,7 @@
                             Classes="results-list"
                             AutomationProperties.AutomationId="WinspotResultsList"
                             AutomationProperties.Name="Search results"
+                            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                             ItemsSource="{Binding Results}"
                             SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
                             <ListBox.ItemTemplate>
