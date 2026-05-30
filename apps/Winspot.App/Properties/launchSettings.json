@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "Winspot.App": {
+      "commandName": "Project"
+    }
+  }
+}

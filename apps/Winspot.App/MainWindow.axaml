@@ -1,0 +1,223 @@
+<Window
+    x:Class="Winspot_App.MainWindow"
+    x:DataType="vm:LauncherViewModel"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:Winspot_App.Models"
+    xmlns:vm="using:Winspot_App.ViewModels"
+    Title="Winspot"
+    Width="760"
+    Height="76"
+    MinWidth="420"
+    MinHeight="76"
+    Background="Transparent"
+    CanResize="False"
+    ExtendClientAreaToDecorationsHint="True"
+    ShowInTaskbar="False"
+    WindowDecorations="None"
+    Topmost="True"
+    WindowStartupLocation="CenterScreen">
+    <Window.Styles>
+        <Style Selector="Border.spotlight-surface">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <Style Selector="Border.search-shell">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="MinHeight" Value="58" />
+            <Setter Property="Padding" Value="18,0" />
+        </Style>
+
+        <Style Selector="TextBox.query-box">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CaretBrush" Value="#FFE8EDF7" />
+            <Setter Property="Foreground" Value="#FFE8EDF7" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="SelectionBrush" Value="#665F6F84" />
+        </Style>
+
+        <Style Selector="ListBox.results-list">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="ListBoxItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#FFFFFFFF" />
+        </Style>
+
+        <Style Selector="ListBoxItem:pointerover">
+            <Setter Property="Background" Value="#FF161E2A" />
+        </Style>
+
+        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#FF161E2A" />
+        </Style>
+
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="#FF1A2230" />
+            <Setter Property="Foreground" Value="#FFE8EDF7" />
+        </Style>
+
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="#FF1A2230" />
+        </Style>
+    </Window.Styles>
+
+    <Panel ClipToBounds="False">
+        <Border
+            x:Name="SpotlightSurface"
+            Classes="spotlight-surface"
+            Margin="8"
+            Padding="0"
+            Background="#FF111620"
+            BorderBrush="#26FFFFFF"
+            BorderThickness="1"
+            BoxShadow="0 14 38 0 #78000000"
+            CornerRadius="20">
+            <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                <Border Classes="search-shell">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                            FontSize="17"
+                            Foreground="#FFAEB7C6"
+                            Text="&#xE721;" />
+
+                        <TextBox
+                            x:Name="SearchBox"
+                            Grid.Column="1"
+                            Classes="query-box"
+                            AutomationProperties.AutomationId="WinspotSearchBox"
+                            AutomationProperties.Name="Winspot search"
+                            Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            PlaceholderText="Search apps, files, commands, and plugins" />
+
+                        <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Foreground="#FF8792A3"
+                            Text="Ctrl Alt Space" />
+                    </Grid>
+                </Border>
+
+                <Grid
+                    x:Name="ResultsHost"
+                    Grid.Row="1"
+                    ColumnDefinitions="2*,*"
+                    ColumnSpacing="12"
+                    IsVisible="{Binding IsExpanded}"
+                    Margin="8,0,8,8"
+                    RowDefinitions="*,Auto">
+                    <Border
+                        Grid.RowSpan="2"
+                        Background="#FF0F141D"
+                        BorderBrush="#14FFFFFF"
+                        BorderThickness="1"
+                        CornerRadius="16"
+                        Padding="8">
+                        <ListBox
+                            Classes="results-list"
+                            AutomationProperties.AutomationId="WinspotResultsList"
+                            AutomationProperties.Name="Search results"
+                            ItemsSource="{Binding Results}"
+                            SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate
+                                    DataType="models:SearchResultItem"
+                                    x:DataType="models:SearchResultItem">
+                                    <Grid
+                                        MinHeight="54"
+                                        ColumnDefinitions="Auto,*,Auto"
+                                        ColumnSpacing="12"
+                                        Margin="10,8">
+                                        <Border
+                                            Width="34"
+                                            Height="34"
+                                            VerticalAlignment="Center"
+                                            Background="#FF202938"
+                                            CornerRadius="9">
+                                            <TextBlock
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                FontSize="16"
+                                                Foreground="#FFCBD5E1"
+                                                Text="{Binding IconGlyph}" />
+                                        </Border>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock
+                                                FontSize="15"
+                                                Foreground="#FFE8EDF7"
+                                                Text="{Binding Title}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                FontSize="12"
+                                                Foreground="#FFAEB7C6"
+                                                Text="{Binding Subtitle}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+
+                                        <Border
+                                            Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            Background="#FF202938"
+                                            CornerRadius="8"
+                                            Padding="7,3">
+                                            <TextBlock
+                                                FontSize="11"
+                                                Foreground="#FFAEB7C6"
+                                                Text="{Binding Kind}" />
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+
+                    <Border
+                        Grid.Column="1"
+                        Background="#FF0F141D"
+                        BorderBrush="#14FFFFFF"
+                        BorderThickness="1"
+                        CornerRadius="16"
+                        Padding="14">
+                        <ScrollViewer>
+                            <StackPanel Spacing="8">
+                                <TextBlock
+                                    AutomationProperties.AutomationId="WinspotPreviewTitle"
+                                    FontSize="15"
+                                    FontWeight="SemiBold"
+                                    Foreground="#FFE8EDF7"
+                                    Text="{Binding PreviewTitle}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    AutomationProperties.AutomationId="WinspotPreviewBody"
+                                    FontSize="12"
+                                    Foreground="#FFAEB7C6"
+                                    Text="{Binding PreviewBody}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="1"
+                        Margin="4,8,4,0"
+                        AutomationProperties.AutomationId="WinspotStatusText"
+                        FontSize="12"
+                        Foreground="#FF8792A3"
+                        Text="{Binding StatusText}" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Panel>
+</Window>
