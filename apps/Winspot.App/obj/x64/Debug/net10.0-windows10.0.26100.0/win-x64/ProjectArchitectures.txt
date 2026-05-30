@@ -1,1 +1,0 @@
-C:\Users\kevin\Projekt\Winspot\apps\Winspot.App\Winspot.App.csproj;x64
