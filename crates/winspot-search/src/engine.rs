@@ -28,7 +28,7 @@ pub struct QueryCacheStats {
 pub struct SearchEngine {
     candidates: Vec<SearchResult>,
     dynamic_providers: Vec<Arc<dyn DynamicSearchProvider>>,
-    usage: UsageSnapshot,
+    usage: Arc<Mutex<UsageSnapshot>>,
     now_unix_seconds: u64,
     cache: Arc<Mutex<QueryCache>>,
 }
@@ -72,7 +72,7 @@ impl SearchEngine {
         Self {
             candidates,
             dynamic_providers: Vec::new(),
-            usage,
+            usage: Arc::new(Mutex::new(usage)),
             now_unix_seconds,
             cache: Arc::new(Mutex::new(QueryCache::new(cache_limit))),
         }
@@ -119,13 +119,32 @@ impl SearchEngine {
             candidates.extend(provider.search(query));
         }
 
-        let results =
-            rank_results_with_usage(query, candidates, limit, &self.usage, self.now_unix_seconds);
+        let results = {
+            let usage = self.usage.lock().expect("usage lock is not poisoned");
+            rank_results_with_usage(query, candidates, limit, &usage, self.now_unix_seconds)
+        };
         self.cache
             .lock()
             .expect("query cache lock is not poisoned")
             .insert(key, results.clone());
         results
+    }
+
+    /// Records a usage event in the in-memory ranking snapshot and invalidates
+    /// cached query batches so subsequent searches reflect the new signal
+    /// without requiring a daemon restart.
+    pub fn record_usage(&self, result_id: &str, timestamp_unix_seconds: u64) {
+        {
+            let mut usage = self.usage.lock().expect("usage lock is not poisoned");
+            let signal = usage.entry(result_id.to_string()).or_default();
+            signal.launch_count = signal.launch_count.saturating_add(1);
+            signal.last_used_unix_seconds =
+                signal.last_used_unix_seconds.max(timestamp_unix_seconds);
+        }
+        self.cache
+            .lock()
+            .expect("query cache lock is not poisoned")
+            .clear();
     }
 
     pub fn cache_stats(&self) -> QueryCacheStats {
@@ -210,6 +229,11 @@ impl QueryCache {
                 self.entries.remove(&oldest);
             }
         }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.order.clear();
     }
 
     fn stats(&self) -> QueryCacheStats {

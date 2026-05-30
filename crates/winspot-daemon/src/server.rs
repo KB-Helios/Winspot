@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::Context;
+use clipboard_win::set_clipboard_string;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::windows::named_pipe::ServerOptions,
@@ -116,7 +117,7 @@ fn handle_line(
             ))
         }
         IpcPayload::ActionRequested(action) => {
-            let completed = handle_action(action, config);
+            let completed = handle_action(action, engine, config);
             Ok(IpcEnvelope::request(
                 request_id,
                 IpcPayload::ActionCompleted(completed),
@@ -152,9 +153,15 @@ fn metadata_preview_body(result: &SearchResult) -> String {
     )
 }
 
-fn handle_action(action: ActionRequested, config: &PipeConfig) -> ActionCompleted {
+fn handle_action(
+    action: ActionRequested,
+    engine: &SearchEngine,
+    config: &PipeConfig,
+) -> ActionCompleted {
+    let now = current_unix_seconds();
     match execute_action(&action).and_then(|message| {
-        record_usage(&action, config)?;
+        record_usage(&action, now, config)?;
+        engine.record_usage(&action.result_id, now);
         Ok(message)
     }) {
         Ok(message) => ActionCompleted {
@@ -172,9 +179,26 @@ fn handle_action(action: ActionRequested, config: &PipeConfig) -> ActionComplete
 
 fn execute_action(action: &ActionRequested) -> anyhow::Result<String> {
     match action.primary_action {
-        ActionKind::Copy => Ok(format!("Prepared {}", action.title)),
+        ActionKind::Copy => copy_action(action),
         ActionKind::RunCommand => run_command_action(action),
         ActionKind::Open => open_action(action),
+    }
+}
+
+fn copy_action(action: &ActionRequested) -> anyhow::Result<String> {
+    let value = clipboard_value(&action.title);
+    set_clipboard_string(value)
+        .map_err(|error| anyhow::anyhow!("copy {} to clipboard: {error}", action.title))?;
+    Ok(format!("Copied {value}"))
+}
+
+/// Calculator and unit-conversion results format their title as
+/// `"<input> = <value>"`, so the value the user wants is the part after the
+/// last `" = "`. Other copyable results (e.g. process names) copy the title.
+fn clipboard_value(title: &str) -> &str {
+    match title.rsplit_once(" = ") {
+        Some((_, value)) => value.trim(),
+        None => title.trim(),
     }
 }
 
@@ -203,7 +227,11 @@ fn open_action(action: &ActionRequested) -> anyhow::Result<String> {
     Ok(format!("Opened {}", action.title))
 }
 
-fn record_usage(action: &ActionRequested, config: &PipeConfig) -> anyhow::Result<()> {
+fn record_usage(
+    action: &ActionRequested,
+    now_unix_seconds: u64,
+    config: &PipeConfig,
+) -> anyhow::Result<()> {
     let Some(path) = &config.usage_log_path else {
         return Ok(());
     };
@@ -211,7 +239,7 @@ fn record_usage(action: &ActionRequested, config: &PipeConfig) -> anyhow::Result
     UsageStore::new(path.clone())
         .record(UsageEvent {
             result_id: action.result_id.clone(),
-            timestamp_unix_seconds: current_unix_seconds(),
+            timestamp_unix_seconds: now_unix_seconds,
         })
         .with_context(|| format!("record usage for {}", action.result_id))
 }

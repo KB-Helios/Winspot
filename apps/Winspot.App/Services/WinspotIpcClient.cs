@@ -31,13 +31,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         string query,
         CancellationToken cancellationToken)
     {
-        await using var pipe = new NamedPipeClientStream(
-            ".",
-            PipeName,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous);
-
-        await ConnectAsync(pipe, cancellationToken);
+        await using var pipe = await ConnectAsync(cancellationToken);
 
         await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
         using var reader = new StreamReader(pipe, leaveOpen: true);
@@ -73,13 +67,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         SearchResultItem result,
         CancellationToken cancellationToken)
     {
-        await using var pipe = new NamedPipeClientStream(
-            ".",
-            PipeName,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous);
-
-        await ConnectAsync(pipe, cancellationToken);
+        await using var pipe = await ConnectAsync(cancellationToken);
 
         await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
         using var reader = new StreamReader(pipe, leaveOpen: true);
@@ -128,13 +116,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         SearchResultItem result,
         CancellationToken cancellationToken)
     {
-        await using var pipe = new NamedPipeClientStream(
-            ".",
-            PipeName,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous);
-
-        await ConnectAsync(pipe, cancellationToken);
+        await using var pipe = await ConnectAsync(cancellationToken);
 
         await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
         using var reader = new StreamReader(pipe, leaveOpen: true);
@@ -205,22 +187,49 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         bool IsFinal,
         IReadOnlyList<SearchResultItem> Results);
 
-    private static async Task ConnectAsync(
-        NamedPipeClientStream pipe,
+    // A NamedPipeClientStream cannot be reconnected once a ConnectAsync attempt
+    // has faulted, so every attempt uses a fresh stream and the caller owns the
+    // returned, already-connected instance.
+    private static async Task<NamedPipeClientStream> ConnectAsync(
         CancellationToken cancellationToken)
     {
+        var pipe = CreatePipe();
         try
         {
             await pipe.ConnectAsync(750, cancellationToken);
+            return pipe;
         }
         catch (TimeoutException)
         {
+            await pipe.DisposeAsync();
+
             if (!await BackendProcess.TryStartAsync(cancellationToken))
             {
                 throw;
             }
 
-            await pipe.ConnectAsync(2_000, cancellationToken);
+            var retryPipe = CreatePipe();
+            try
+            {
+                await retryPipe.ConnectAsync(2_000, cancellationToken);
+                return retryPipe;
+            }
+            catch
+            {
+                await retryPipe.DisposeAsync();
+                throw;
+            }
+        }
+        catch
+        {
+            await pipe.DisposeAsync();
+            throw;
         }
     }
+
+    private static NamedPipeClientStream CreatePipe() => new(
+        ".",
+        PipeName,
+        PipeDirection.InOut,
+        PipeOptions.Asynchronous);
 }

@@ -19,4 +19,41 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.4" />
     <PackageReference Include="Avalonia.Themes.Simple" Version="12.0.4" />
   </ItemGroup>
+
+  <!--
+    Ship the Rust backend with the app. Without this, packaged/published installs
+    cannot locate winspot-daemon.exe and every search falls back to
+    "Backend unavailable". Pass -p:BuildWinspotDaemon=false to skip the cargo
+    build (e.g. in C#-only environments where the binary is provided separately).
+  -->
+  <PropertyGroup>
+    <WinspotRepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../..'))</WinspotRepoRoot>
+    <WinspotCargoProfile Condition="'$(Configuration)' == 'Release'">release</WinspotCargoProfile>
+    <WinspotCargoProfile Condition="'$(WinspotCargoProfile)' == ''">debug</WinspotCargoProfile>
+    <WinspotCargoReleaseFlag Condition="'$(WinspotCargoProfile)' == 'release'">--release</WinspotCargoReleaseFlag>
+    <WinspotDaemonExe>$(WinspotRepoRoot)/target/$(WinspotCargoProfile)/winspot-daemon.exe</WinspotDaemonExe>
+  </PropertyGroup>
+
+  <Target Name="BuildWinspotDaemon" Condition="'$(BuildWinspotDaemon)' != 'false'">
+    <Exec Command="cargo build -p winspot-daemon $(WinspotCargoReleaseFlag)"
+          WorkingDirectory="$(WinspotRepoRoot)" />
+  </Target>
+
+  <Target Name="CopyWinspotDaemonToOutput"
+          AfterTargets="Build"
+          DependsOnTargets="BuildWinspotDaemon"
+          Condition="Exists('$(WinspotDaemonExe)')">
+    <Copy SourceFiles="$(WinspotDaemonExe)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyWinspotDaemonToPublish"
+          AfterTargets="Publish"
+          DependsOnTargets="BuildWinspotDaemon"
+          Condition="Exists('$(WinspotDaemonExe)')">
+    <Copy SourceFiles="$(WinspotDaemonExe)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>
