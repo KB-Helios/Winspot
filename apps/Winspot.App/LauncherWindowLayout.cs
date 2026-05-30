@@ -4,24 +4,41 @@ namespace Winspot_App;
 
 internal static class LauncherWindowLayout
 {
-    public const double CompactHeight = 72;
-    public const double ExpandedHeight = 560;
+    public const double ShadowMargin = 64;
+    public const double CompactSurfaceHeight = 60;
+    public const double ExpandedSurfaceHeight = 560;
+    public const double CompactHeight = CompactSurfaceHeight + (ShadowMargin * 2);
+    public const double ExpandedHeight = ExpandedSurfaceHeight + (ShadowMargin * 2);
 
-    private const double MinimumWidth = 420;
-    private const double MaximumWidth = 760;
+    private const double MinimumSurfaceWidth = 420;
+    private const double MaximumSurfaceWidth = 760;
     private const double HorizontalBreathingRoom = 48;
     private const double VerticalBreathingRoom = 24;
     private const double VerticalCenterBias = 0.44;
 
     public static Rect CalculateBounds(Rect workingArea, bool isExpanded)
     {
-        var width = Math.Clamp(workingArea.Width - HorizontalBreathingRoom, MinimumWidth, MaximumWidth);
-        var height = isExpanded
-            ? Math.Min(ExpandedHeight, Math.Max(CompactHeight, workingArea.Height - (VerticalBreathingRoom * 4)))
-            : CompactHeight;
+        var availableSurfaceWidth = Math.Max(1, workingArea.Width - HorizontalBreathingRoom - (ShadowMargin * 2));
+        var preferredSurfaceWidth = Math.Clamp(
+            workingArea.Width - HorizontalBreathingRoom,
+            MinimumSurfaceWidth,
+            MaximumSurfaceWidth);
+        var surfaceWidth = Math.Min(preferredSurfaceWidth, availableSurfaceWidth);
 
-        var x = workingArea.X + ((workingArea.Width - width) / 2);
-        var desiredY = workingArea.Y + (workingArea.Height * VerticalCenterBias) - (height / 2);
+        var availableSurfaceHeight = Math.Max(
+            CompactSurfaceHeight,
+            workingArea.Height - (VerticalBreathingRoom * 2) - (ShadowMargin * 2));
+        var surfaceHeight = isExpanded
+            ? Math.Min(ExpandedSurfaceHeight, availableSurfaceHeight)
+            : CompactSurfaceHeight;
+
+        var width = surfaceWidth + (ShadowMargin * 2);
+        var height = surfaceHeight + (ShadowMargin * 2);
+
+        var surfaceX = workingArea.X + ((workingArea.Width - surfaceWidth) / 2);
+        var surfaceDesiredY = workingArea.Y + (workingArea.Height * VerticalCenterBias) - (surfaceHeight / 2);
+        var x = surfaceX - ShadowMargin;
+        var desiredY = surfaceDesiredY - ShadowMargin;
         var minY = workingArea.Y + VerticalBreathingRoom;
         var maxY = workingArea.Bottom - height - VerticalBreathingRoom;
         var y = maxY < minY ? minY : Math.Clamp(desiredY, minY, maxY);

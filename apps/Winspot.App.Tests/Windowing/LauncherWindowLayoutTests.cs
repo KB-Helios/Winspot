@@ -1,9 +1,8 @@
-using System;
-using System.Reflection;
-
 using Avalonia;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+using Winspot_App;
 
 namespace Winspot_App.Tests.Windowing;
 
@@ -11,37 +10,28 @@ namespace Winspot_App.Tests.Windowing;
 public sealed class LauncherWindowLayoutTests
 {
     [TestMethod]
-    public void CalculateBounds_WhenExpandedOnLargeScreen_UsesMaximumSpotlightSizeAboveCenter()
+    public void CalculateBounds_WhenExpandedOnLargeScreen_IncludesShadowMarginAroundMaximumSurface()
     {
-        var bounds = CalculateBounds(new Rect(0, 0, 1200, 900), isExpanded: true);
+        var bounds = LauncherWindowLayout.CalculateBounds(new Rect(0, 0, 1200, 900), isExpanded: true);
 
-        Assert.AreEqual(760, bounds.Width);
-        Assert.AreEqual(560, bounds.Height);
-        Assert.AreEqual(220, bounds.X);
-        Assert.AreEqual(116, bounds.Y);
+        Assert.AreEqual(888, bounds.Width);
+        Assert.AreEqual(688, bounds.Height);
+        Assert.AreEqual(156, bounds.X);
+        Assert.AreEqual(52, bounds.Y);
+        Assert.AreEqual(760, bounds.Width - (LauncherWindowLayout.ShadowMargin * 2));
+        Assert.AreEqual(560, bounds.Height - (LauncherWindowLayout.ShadowMargin * 2));
     }
 
     [TestMethod]
-    public void CalculateBounds_WhenCompactOnNarrowScreen_LeavesHorizontalBreathingRoom()
+    public void CalculateBounds_WhenCompactOnNarrowScreen_FitsWindowAndPreservesShadowMargin()
     {
-        var bounds = CalculateBounds(new Rect(0, 0, 500, 400), isExpanded: false);
+        var bounds = LauncherWindowLayout.CalculateBounds(new Rect(0, 0, 500, 400), isExpanded: false);
 
         Assert.AreEqual(452, bounds.Width);
-        Assert.AreEqual(72, bounds.Height);
+        Assert.AreEqual(188, bounds.Height);
         Assert.AreEqual(24, bounds.X);
-        Assert.AreEqual(140, bounds.Y);
-    }
-
-    private static Rect CalculateBounds(Rect workingArea, bool isExpanded)
-    {
-        var type = Type.GetType("Winspot_App.LauncherWindowLayout, Winspot.App", throwOnError: false);
-        Assert.IsNotNull(type, "Expected an internal LauncherWindowLayout helper in Winspot.App.");
-
-        var method = type!.GetMethod("CalculateBounds", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert.IsNotNull(method, "Expected LauncherWindowLayout.CalculateBounds(Rect, bool).");
-
-        var result = method!.Invoke(null, new object[] { workingArea, isExpanded });
-        Assert.IsInstanceOfType<Rect>(result);
-        return (Rect)result!;
+        Assert.AreEqual(82, bounds.Y);
+        Assert.AreEqual(324, bounds.Width - (LauncherWindowLayout.ShadowMargin * 2));
+        Assert.AreEqual(60, bounds.Height - (LauncherWindowLayout.ShadowMargin * 2));
     }
 }
