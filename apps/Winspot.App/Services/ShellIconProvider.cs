@@ -91,12 +91,18 @@ public sealed class ShellIconProvider
 
             var header = new BITMAPINFO
             {
-                biSize = (uint)Marshal.SizeOf<BITMAPINFO>(),
-                biWidth = width,
-                biHeight = -height, // top-down so rows are in display order
-                biPlanes = 1,
-                biBitCount = 32,
-                biCompression = BI_RGB,
+                // GetDIBits requires biSize to be exactly the BITMAPINFOHEADER
+                // size (40); the surrounding BITMAPINFO carries an extra color
+                // table entry that must not be counted here.
+                bmiHeader = new BITMAPINFOHEADER
+                {
+                    biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>(),
+                    biWidth = width,
+                    biHeight = -height, // top-down so rows are in display order
+                    biPlanes = 1,
+                    biBitCount = 32,
+                    biCompression = BI_RGB,
+                },
             };
 
             var byteCount = width * height * 4;
@@ -179,6 +185,7 @@ public sealed class ShellIconProvider
     [StructLayout(LayoutKind.Sequential)]
     private struct ICONINFO
     {
+        [MarshalAs(UnmanagedType.Bool)]
         public bool fIcon;
         public int xHotspot;
         public int yHotspot;
@@ -199,7 +206,7 @@ public sealed class ShellIconProvider
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct BITMAPINFO
+    private struct BITMAPINFOHEADER
     {
         public uint biSize;
         public int biWidth;
@@ -212,6 +219,12 @@ public sealed class ShellIconProvider
         public int biYPelsPerMeter;
         public uint biClrUsed;
         public uint biClrImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BITMAPINFO
+    {
+        public BITMAPINFOHEADER bmiHeader;
         public uint biColors;
     }
 

@@ -65,14 +65,21 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
             return Ok(());
         }
     };
-    serve_connection(first, &engine, &config).await?;
+    if let Err(error) = serve_connection(first, &engine, &config).await {
+        eprintln!("winspot-daemon: connection error: {error:?}");
+    }
 
     loop {
         let server = ServerOptions::new()
             .first_pipe_instance(false)
             .create(&config.pipe_name)
             .with_context(|| format!("create named pipe {}", config.pipe_name))?;
-        serve_connection(server, &engine, &config).await?;
+        // A single client connection failing (abrupt disconnect, broken pipe,
+        // malformed payload) must not take down the daemon: log it and keep
+        // accepting subsequent connections.
+        if let Err(error) = serve_connection(server, &engine, &config).await {
+            eprintln!("winspot-daemon: connection error: {error:?}");
+        }
     }
 }
 
