@@ -26,7 +26,7 @@ impl Default for BenchmarkConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LatencySummary {
     pub min_micros: u128,
@@ -118,15 +118,4 @@ pub fn summarize_latencies(latencies: &[Duration]) -> Option<LatencySummary> {
         p95_micros: micros[p95_index],
         max_micros: micros[micros.len() - 1],
     })
-}
-
-impl Default for LatencySummary {
-    fn default() -> Self {
-        Self {
-            min_micros: 0,
-            average_micros: 0,
-            p95_micros: 0,
-            max_micros: 0,
-        }
-    }
 }

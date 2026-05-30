@@ -1,4 +1,11 @@
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::Cell,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
+};
 
 use winspot_core::{ActionKind, SearchResult, SearchResultKind};
 use winspot_search::{
@@ -36,7 +43,7 @@ fn search_engine_collects_provider_candidates_once() {
 
 #[test]
 fn search_engine_can_rank_explicit_candidates() {
-    let engine = SearchEngine::from_results(BuiltinCommandProvider::default().collect_results());
+    let engine = SearchEngine::from_results(BuiltinCommandProvider.collect_results());
 
     let results = engine.search("term", 5);
 
@@ -83,7 +90,7 @@ fn search_engine_applies_usage_snapshot_to_ranking() {
 
 #[test]
 fn search_engine_reuses_cached_ranked_results_for_same_query_and_limit() {
-    let engine = SearchEngine::from_results(BuiltinCommandProvider::default().collect_results());
+    let engine = SearchEngine::from_results(BuiltinCommandProvider.collect_results());
 
     let first = engine.search("term", 5);
     let after_first = engine.cache_stats();
@@ -99,10 +106,8 @@ fn search_engine_reuses_cached_ranked_results_for_same_query_and_limit() {
 
 #[test]
 fn search_engine_cache_is_bounded() {
-    let engine = SearchEngine::from_results_with_cache_limit(
-        BuiltinCommandProvider::default().collect_results(),
-        1,
-    );
+    let engine =
+        SearchEngine::from_results_with_cache_limit(BuiltinCommandProvider.collect_results(), 1);
 
     let _ = engine.search("calc", 5);
     let _ = engine.search("term", 5);
@@ -178,7 +183,7 @@ fn default_search_engine_includes_windows_settings_results() {
 #[test]
 #[cfg(windows)]
 fn default_search_engine_includes_running_process_results() {
-    let process = RunningProcessProvider::default()
+    let process = RunningProcessProvider
         .collect_results()
         .into_iter()
         .next()
@@ -192,8 +197,90 @@ fn default_search_engine_includes_running_process_results() {
     );
 }
 
+#[test]
+fn refreshable_engine_recollects_candidates_after_ttl() {
+    let count = Arc::new(AtomicUsize::new(0));
+    let clock = Arc::new(AtomicU64::new(100));
+    let provider = AtomicCountingProvider {
+        count: Arc::clone(&count),
+    };
+    let clock_for_now = Arc::clone(&clock);
+    let engine = SearchEngine::from_refreshable_providers_with_usage(
+        vec![Arc::new(provider)],
+        UsageSnapshot::default(),
+        5,
+        Arc::new(move || clock_for_now.load(Ordering::SeqCst)),
+    );
+
+    let _ = engine.search("sample", 10);
+    assert_eq!(
+        count.load(Ordering::SeqCst),
+        1,
+        "first search collects once"
+    );
+
+    // A second search inside the TTL window reuses the cached candidates.
+    clock.store(103, Ordering::SeqCst);
+    let _ = engine.search("app", 10);
+    assert_eq!(
+        count.load(Ordering::SeqCst),
+        1,
+        "within TTL reuses candidates"
+    );
+
+    // Once the TTL elapses, the providers are re-collected.
+    clock.store(106, Ordering::SeqCst);
+    let refreshed = engine.search("sample", 10);
+    assert_eq!(
+        count.load(Ordering::SeqCst),
+        2,
+        "stale candidates are recollected"
+    );
+    assert_eq!(refreshed[0].title, "Sample App");
+}
+
+#[test]
+fn refreshable_engine_with_zero_ttl_recollects_every_search() {
+    let count = Arc::new(AtomicUsize::new(0));
+    let provider = AtomicCountingProvider {
+        count: Arc::clone(&count),
+    };
+    let engine = SearchEngine::from_refreshable_providers_with_usage(
+        vec![Arc::new(provider)],
+        UsageSnapshot::default(),
+        0,
+        Arc::new(|| 0),
+    );
+
+    let _ = engine.search("sample", 10);
+    let _ = engine.search("sample", 10);
+    assert_eq!(
+        count.load(Ordering::SeqCst),
+        2,
+        "ttl 0 refreshes on every search"
+    );
+}
+
 struct CountingProvider {
     collection_count: Rc<Cell<u32>>,
+}
+
+struct AtomicCountingProvider {
+    count: Arc<AtomicUsize>,
+}
+
+impl SearchProvider for AtomicCountingProvider {
+    fn collect_results(&self) -> Vec<SearchResult> {
+        self.count.fetch_add(1, Ordering::SeqCst);
+        vec![SearchResult {
+            id: "app:sample".to_string(),
+            title: "Sample App".to_string(),
+            subtitle: "Test app".to_string(),
+            kind: SearchResultKind::App,
+            score: 0.0,
+            primary_action: ActionKind::Open,
+        }]
+    }
 }
 
 impl SearchProvider for CountingProvider {

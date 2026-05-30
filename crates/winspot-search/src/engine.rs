@@ -8,14 +8,79 @@ use winspot_core::SearchResult;
 use crate::{
     providers::{
         BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
-        RunningProcessProvider, SearchProvider, StartMenuAppProvider, WindowsSettingsProvider,
-        UnitConversionProvider,
+        RefreshableProvider, RunningProcessProvider, SearchProvider, StartMenuAppProvider,
+        UnitConversionProvider, WindowsSettingsProvider,
     },
     ranking::rank_results_with_usage,
     usage::UsageSnapshot,
 };
 
 const DEFAULT_CACHE_LIMIT: usize = 128;
+
+/// Returns the current Unix time in seconds. Injectable so the daemon can use
+/// the real clock while tests drive candidate-freshness deterministically.
+pub type NowProvider = Arc<dyn Fn() -> u64 + Send + Sync>;
+
+fn constant_now(now_unix_seconds: u64) -> NowProvider {
+    Arc::new(move || now_unix_seconds)
+}
+
+/// Source of the static candidate set the engine ranks against.
+///
+/// `Frozen` candidates are collected once (used by tests and explicit result
+/// sets). `Refreshable` candidates are re-collected from their providers when
+/// they grow older than `ttl_seconds`, so live signals like running processes
+/// and newly installed apps stay current without restarting the daemon.
+#[derive(Clone)]
+enum CandidateSource {
+    Frozen(Arc<Vec<SearchResult>>),
+    Refreshable(Arc<RefreshableCandidates>),
+}
+
+struct RefreshableCandidates {
+    providers: Vec<Arc<dyn RefreshableProvider>>,
+    ttl_seconds: u64,
+    state: Mutex<RefreshState>,
+}
+
+struct RefreshState {
+    results: Arc<Vec<SearchResult>>,
+    collected_at_unix: u64,
+    collected: bool,
+}
+
+impl CandidateSource {
+    fn collect(providers: &[Arc<dyn RefreshableProvider>]) -> Vec<SearchResult> {
+        providers
+            .iter()
+            .flat_map(|provider| provider.collect_results())
+            .collect()
+    }
+
+    /// Resolves the current candidate set for `now`. For refreshable sources
+    /// this re-collects providers when the cached snapshot is stale and clears
+    /// the query cache so callers never see results ranked over stale
+    /// candidates. Returns `true` when a refresh happened.
+    fn resolve(&self, now_unix_seconds: u64) -> (Arc<Vec<SearchResult>>, bool) {
+        match self {
+            CandidateSource::Frozen(results) => (Arc::clone(results), false),
+            CandidateSource::Refreshable(source) => {
+                let mut state = source.state.lock().expect("candidate lock is not poisoned");
+                let is_stale = !state.collected
+                    || now_unix_seconds.saturating_sub(state.collected_at_unix)
+                        >= source.ttl_seconds;
+                if is_stale {
+                    state.results = Arc::new(Self::collect(&source.providers));
+                    state.collected_at_unix = now_unix_seconds;
+                    state.collected = true;
+                    (Arc::clone(&state.results), true)
+                } else {
+                    (Arc::clone(&state.results), false)
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct QueryCacheStats {
@@ -26,10 +91,10 @@ pub struct QueryCacheStats {
 
 #[derive(Clone)]
 pub struct SearchEngine {
-    candidates: Vec<SearchResult>,
+    candidates: CandidateSource,
     dynamic_providers: Vec<Arc<dyn DynamicSearchProvider>>,
     usage: Arc<Mutex<UsageSnapshot>>,
-    now_unix_seconds: u64,
+    now_provider: NowProvider,
     cache: Arc<Mutex<QueryCache>>,
 }
 
@@ -70,10 +135,10 @@ impl SearchEngine {
         cache_limit: usize,
     ) -> Self {
         Self {
-            candidates,
+            candidates: CandidateSource::Frozen(Arc::new(candidates)),
             dynamic_providers: Vec::new(),
             usage: Arc::new(Mutex::new(usage)),
-            now_unix_seconds,
+            now_provider: constant_now(now_unix_seconds),
             cache: Arc::new(Mutex::new(QueryCache::new(cache_limit))),
         }
     }
@@ -98,12 +163,49 @@ impl SearchEngine {
         Self::from_results_with_usage(candidates, usage, now_unix_seconds)
     }
 
+    /// Builds an engine whose static candidates are re-collected from
+    /// `providers` whenever the cached snapshot is older than `ttl_seconds`.
+    /// `now_provider` supplies the current Unix time used for both freshness
+    /// checks and usage-recency ranking.
+    pub fn from_refreshable_providers_with_usage(
+        providers: Vec<Arc<dyn RefreshableProvider>>,
+        usage: UsageSnapshot,
+        ttl_seconds: u64,
+        now_provider: NowProvider,
+    ) -> Self {
+        Self {
+            candidates: CandidateSource::Refreshable(Arc::new(RefreshableCandidates {
+                providers,
+                ttl_seconds,
+                state: Mutex::new(RefreshState {
+                    results: Arc::new(Vec::new()),
+                    collected_at_unix: 0,
+                    collected: false,
+                }),
+            })),
+            dynamic_providers: Vec::new(),
+            usage: Arc::new(Mutex::new(usage)),
+            now_provider,
+            cache: Arc::new(Mutex::new(QueryCache::new(DEFAULT_CACHE_LIMIT))),
+        }
+    }
+
     pub fn with_dynamic_provider(mut self, provider: Arc<dyn DynamicSearchProvider>) -> Self {
         self.dynamic_providers.push(provider);
         self
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Vec<SearchResult> {
+        let now_unix_seconds = (self.now_provider)();
+        let (candidates, refreshed) = self.candidates.resolve(now_unix_seconds);
+        if refreshed {
+            // Stale candidates were replaced; drop cached batches ranked over them.
+            self.cache
+                .lock()
+                .expect("query cache lock is not poisoned")
+                .clear();
+        }
+
         let key = QueryCacheKey::new(query, limit);
         if let Some(results) = self
             .cache
@@ -114,14 +216,14 @@ impl SearchEngine {
             return results;
         }
 
-        let mut candidates = self.candidates.clone();
+        let mut candidates = (*candidates).clone();
         for provider in &self.dynamic_providers {
             candidates.extend(provider.search(query));
         }
 
         let results = {
             let usage = self.usage.lock().expect("usage lock is not poisoned");
-            rank_results_with_usage(query, candidates, limit, &usage, self.now_unix_seconds)
+            rank_results_with_usage(query, candidates, limit, &usage, now_unix_seconds)
         };
         self.cache
             .lock()

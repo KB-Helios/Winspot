@@ -22,7 +22,7 @@ fn summarize_latencies_reports_core_percentiles() {
 
 #[test]
 fn search_benchmark_runs_warm_queries_against_engine() {
-    let engine = SearchEngine::from_results(BuiltinCommandProvider::default().collect_results());
+    let engine = SearchEngine::from_results(BuiltinCommandProvider.collect_results());
     let benchmark = SearchBenchmark::new(BenchmarkConfig {
         queries: vec!["calc".to_string(), "terminal".to_string()],
         warmup_iterations: 2,

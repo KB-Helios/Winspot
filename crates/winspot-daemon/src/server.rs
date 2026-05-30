@@ -10,7 +10,7 @@ use anyhow::Context;
 use clipboard_win::set_clipboard_string;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::windows::named_pipe::ServerOptions,
+    net::windows::named_pipe::{NamedPipeServer, ServerOptions},
 };
 use winspot_core::{
     ActionCompleted, ActionKind, ActionRequested, IpcEnvelope, IpcPayload, PreviewReady,
@@ -19,11 +19,17 @@ use winspot_core::{
 use winspot_search::{
     engine::SearchEngine,
     providers::{
-        BuiltinCommandProvider, CalculatorProvider, FileSystemProvider, SearchProvider,
-        RunningProcessProvider, StartMenuAppProvider, UnitConversionProvider, WindowsSettingsProvider,
+        BuiltinCommandProvider, CalculatorProvider, FileSystemProvider, RefreshableProvider,
+        RunningProcessProvider, StartMenuAppProvider, UnitConversionProvider,
+        WindowsSettingsProvider,
     },
     usage::{UsageEvent, UsageSnapshot, UsageStore},
 };
+
+/// How long a collected static-candidate snapshot is reused before the engine
+/// re-runs its providers, so processes/files/apps stay reasonably fresh without
+/// re-collecting on every keystroke.
+const CANDIDATE_TTL_SECONDS: u64 = 5;
 
 #[derive(Debug, Clone)]
 pub struct PipeConfig {
@@ -42,8 +48,31 @@ impl Default for PipeConfig {
 
 pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
     let engine = build_search_engine(&config).context("build search engine")?;
+
+    // Reserve the first pipe instance as a single-instance guard: if another
+    // daemon already owns this pipe name, `first_pipe_instance(true)` fails and
+    // we exit quietly instead of leaving a redundant daemon running.
+    let first = match ServerOptions::new()
+        .first_pipe_instance(true)
+        .create(&config.pipe_name)
+    {
+        Ok(server) => server,
+        Err(error) => {
+            eprintln!(
+                "winspot-daemon: another instance already owns {} ({error}); exiting",
+                config.pipe_name
+            );
+            return Ok(());
+        }
+    };
+    serve_connection(first, &engine, &config).await?;
+
     loop {
-        serve_pipe_once(config.clone(), &engine).await?;
+        let server = ServerOptions::new()
+            .first_pipe_instance(false)
+            .create(&config.pipe_name)
+            .with_context(|| format!("create named pipe {}", config.pipe_name))?;
+        serve_connection(server, &engine, &config).await?;
     }
 }
 
@@ -55,10 +84,11 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
         None => UsageSnapshot::default(),
     };
 
-    Ok(SearchEngine::from_providers_with_usage(
+    Ok(SearchEngine::from_refreshable_providers_with_usage(
         default_search_providers(),
         usage,
-        current_unix_seconds(),
+        CANDIDATE_TTL_SECONDS,
+        Arc::new(current_unix_seconds),
     )
     .with_dynamic_provider(Arc::new(CalculatorProvider))
     .with_dynamic_provider(Arc::new(UnitConversionProvider)))
@@ -69,7 +99,14 @@ pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyho
         .first_pipe_instance(false)
         .create(&config.pipe_name)
         .with_context(|| format!("create named pipe {}", config.pipe_name))?;
+    serve_connection(server, engine, &config).await
+}
 
+async fn serve_connection(
+    server: NamedPipeServer,
+    engine: &SearchEngine,
+    config: &PipeConfig,
+) -> anyhow::Result<()> {
     server
         .connect()
         .await
@@ -79,7 +116,7 @@ pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyho
     let mut line = String::new();
     reader.read_line(&mut line).await.context("read IPC line")?;
 
-    let response = handle_line(line.trim(), engine, &config)?;
+    let response = handle_line(line.trim(), engine, config)?;
     let mut response_json = serde_json::to_string(&response).context("serialize response")?;
     response_json.push('\n');
     reader
@@ -244,13 +281,13 @@ fn record_usage(
         .with_context(|| format!("record usage for {}", action.result_id))
 }
 
-fn default_search_providers() -> Vec<Box<dyn SearchProvider>> {
+fn default_search_providers() -> Vec<Arc<dyn RefreshableProvider>> {
     vec![
-        Box::new(BuiltinCommandProvider),
-        Box::new(WindowsSettingsProvider),
-        Box::new(RunningProcessProvider),
-        Box::new(StartMenuAppProvider::default()),
-        Box::new(FileSystemProvider::default()),
+        Arc::new(BuiltinCommandProvider),
+        Arc::new(WindowsSettingsProvider),
+        Arc::new(RunningProcessProvider),
+        Arc::new(StartMenuAppProvider::default()),
+        Arc::new(FileSystemProvider::default()),
     ]
 }
 

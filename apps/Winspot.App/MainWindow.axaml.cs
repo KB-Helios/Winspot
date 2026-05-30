@@ -8,6 +8,7 @@ using Avalonia.Rendering.Composition;
 using Avalonia.Rendering.Composition.Animations;
 using Avalonia.Threading;
 
+using Winspot_App.Models;
 using Winspot_App.Services;
 using Winspot_App.ViewModels;
 
@@ -18,12 +19,14 @@ public sealed partial class MainWindow : Window
     private static readonly TimeSpan RevealDuration = TimeSpan.FromMilliseconds(160);
     private static readonly CubicEaseOut RevealEasing = new();
 
+    private readonly LauncherSettings _settings;
     private CancellationTokenSource? _boundsAnimationCancellation;
     private GlobalHotkeyService? _hotkeyService;
 
     public MainWindow()
     {
-        ViewModel = new LauncherViewModel(new WinspotIpcClient());
+        _settings = new LauncherSettingsStore().Load();
+        ViewModel = new LauncherViewModel(new WinspotIpcClient(), _settings.Hotkey);
         DataContext = ViewModel;
         InitializeComponent();
 
@@ -239,7 +242,7 @@ public sealed partial class MainWindow : Window
 
         var hotkeyService = new GlobalHotkeyService(handle);
         hotkeyService.Pressed += OnGlobalHotkeyPressed;
-        if (hotkeyService.Register(new LauncherSettingsStore().Load().Hotkey))
+        if (hotkeyService.Register(_settings.Hotkey))
         {
             _hotkeyService = hotkeyService;
             return;

@@ -23,6 +23,24 @@ public sealed class LauncherViewModelTests
     }
 
     [TestMethod]
+    public void HotkeyHint_WhenNoBindingProvided_UsesDefaultChord()
+    {
+        var viewModel = new LauncherViewModel(new FakeWinspotIpcClient());
+
+        Assert.AreEqual("Ctrl Alt Space", viewModel.HotkeyHint);
+    }
+
+    [TestMethod]
+    public void HotkeyHint_ReflectsConfiguredBinding()
+    {
+        var hotkey = new HotkeyBinding { Key = "K", Modifiers = new List<string> { "Control", "Shift" } };
+
+        var viewModel = new LauncherViewModel(new FakeWinspotIpcClient(), hotkey);
+
+        Assert.AreEqual("Ctrl Shift K", viewModel.HotkeyHint);
+    }
+
+    [TestMethod]
     public void Query_WhenSetToText_ExpandsLauncherImmediately()
     {
         var viewModel = new LauncherViewModel(new FakeWinspotIpcClient());

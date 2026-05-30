@@ -27,6 +27,10 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
     private static readonly WinspotBackendProcess BackendProcess = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// Stops the daemon if this app started it. Called on shutdown so closing
+    /// the launcher doesn't leave an orphaned backend behind.
+    public static void StopBackendIfOwned() => BackendProcess.StopIfOwned();
+
     public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(
         string query,
         CancellationToken cancellationToken)
