@@ -16,6 +16,7 @@ pub trait DynamicSearchProvider: Send + Sync {
 
 const DEFAULT_FILE_SYSTEM_MAX_DEPTH: usize = 2;
 const DEFAULT_FILE_SYSTEM_MAX_ENTRIES: usize = 500;
+const START_MENU_MAX_DEPTH: usize = 10;
 
 const WINDOWS_SETTINGS: &[WindowsSetting] = &[
     WindowsSetting {
@@ -266,7 +267,7 @@ impl SearchProvider for StartMenuAppProvider {
     fn collect_results(&self) -> Vec<SearchResult> {
         let mut results = Vec::new();
         for root in &self.roots {
-            collect_shortcuts(root, &mut results);
+            collect_shortcuts(root, 0, &mut results);
         }
         results
     }
@@ -422,7 +423,11 @@ fn default_file_system_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-fn collect_shortcuts(root: &Path, results: &mut Vec<SearchResult>) {
+fn collect_shortcuts(root: &Path, depth: usize, results: &mut Vec<SearchResult>) {
+    if depth > START_MENU_MAX_DEPTH {
+        return;
+    }
+
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
@@ -430,7 +435,7 @@ fn collect_shortcuts(root: &Path, results: &mut Vec<SearchResult>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_shortcuts(&path, results);
+            collect_shortcuts(&path, depth + 1, results);
             continue;
         }
 

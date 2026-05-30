@@ -115,6 +115,42 @@ fn search_engine_cache_is_bounded() {
 }
 
 #[test]
+fn record_usage_updates_ranking_and_invalidates_cache_within_session() {
+    let engine = SearchEngine::from_results(vec![
+        SearchResult {
+            id: "app:notes".to_string(),
+            title: "Notes".to_string(),
+            subtitle: "Stock notes".to_string(),
+            kind: SearchResultKind::App,
+            score: 0.0,
+            primary_action: ActionKind::Open,
+        },
+        SearchResult {
+            id: "app:notepad".to_string(),
+            title: "Notepad".to_string(),
+            subtitle: "Editor".to_string(),
+            kind: SearchResultKind::App,
+            score: 0.0,
+            primary_action: ActionKind::Open,
+        },
+    ]);
+
+    let before = engine.search("note", 5);
+    assert_eq!(before[0].title, "Notes");
+
+    // Simulate the user launching Notepad several times during the session.
+    for _ in 0..6 {
+        engine.record_usage("app:notepad", 0);
+    }
+
+    let after = engine.search("note", 5);
+    assert_eq!(
+        after[0].title, "Notepad",
+        "usage recorded during the session should re-rank without a restart"
+    );
+}
+
+#[test]
 fn default_search_engine_includes_dynamic_calculator_results() {
     let results = SearchEngine::default().search("2 + 2", 5);
 
