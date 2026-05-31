@@ -49,3 +49,8 @@ public sealed record SearchResultItem(
 public sealed record ActionItem(
     string Id,
     string Label);
+
+public sealed record ActionViewItem(
+    string Id,
+    string Label,
+    bool IsFocused);

@@ -82,7 +82,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
             }
 
             var response = JsonSerializer.Deserialize<IpcEnvelope>(line, JsonOptions);
-            if (response?.Payload.Type == "ResultBatch")
+            if (response?.Payload?.Type == "ResultBatch")
             {
                 var batch = response.Payload.Data.Deserialize<ResultBatch>(JsonOptions);
                 if (batch?.Results is not null)
@@ -91,12 +91,12 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
                 }
             }
 
-            if (response?.Payload.Type == "SearchCompleted")
+            if (response?.Payload?.Type == "SearchCompleted")
             {
                 yield break;
             }
 
-            if (response?.Payload.Type == "Error")
+            if (response?.Payload?.Type == "Error")
             {
                 var error = response.Payload.Data.Deserialize<BackendError>(JsonOptions);
                 throw new InvalidOperationException(error?.Message ?? "Backend returned an error.");
@@ -139,7 +139,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         }
 
         var response = JsonSerializer.Deserialize<IpcEnvelope>(line, JsonOptions);
-        if (response?.Payload.Type != "ActionCompleted")
+        if (response?.Payload?.Type != "ActionCompleted")
         {
             throw new InvalidOperationException("Backend returned an unexpected action response.");
         }
@@ -191,7 +191,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
             }
 
             var response = JsonSerializer.Deserialize<IpcEnvelope>(line, JsonOptions);
-            if (response?.Payload.Type == "PreviewChunk")
+            if (response?.Payload?.Type == "PreviewChunk")
             {
                 var preview = response.Payload.Data.Deserialize<PreviewChunk>(JsonOptions);
                 if (preview is not null)
@@ -200,7 +200,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
                 }
             }
 
-            if (response?.Payload.Type == "PreviewReady")
+            if (response?.Payload?.Type == "PreviewReady")
             {
                 var preview = response.Payload.Data.Deserialize<PreviewReady>(JsonOptions);
                 return preview is null ? latest : new PreviewItem(preview.Title, preview.Body);
@@ -292,7 +292,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         }
 
         var response = JsonSerializer.Deserialize<IpcEnvelope>(line, JsonOptions);
-        if (response?.Payload.Type != "HelloAccepted")
+        if (response?.Payload?.Type != "HelloAccepted")
         {
             throw new InvalidOperationException("Backend rejected IPC protocol negotiation.");
         }

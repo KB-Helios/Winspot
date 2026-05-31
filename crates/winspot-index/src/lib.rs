@@ -48,6 +48,10 @@ impl IndexStore {
     }
 
     pub fn upsert(&self, item: &IndexedItem) -> anyhow::Result<()> {
+        self.upsert_without_refresh_touch(item)
+    }
+
+    fn upsert_without_refresh_touch(&self, item: &IndexedItem) -> anyhow::Result<()> {
         self.connection.execute(
             "insert into indexed_items (id, title, path, kind, modified_unix_seconds)
              values (?1, ?2, ?3, ?4, ?5)
@@ -64,8 +68,30 @@ impl IndexStore {
                 item.modified_unix_seconds
             ],
         )?;
-        self.touch_refresh_timestamp()?;
         Ok(())
+    }
+
+    pub fn refresh_items(&self, items: &[IndexedItem]) -> anyhow::Result<()> {
+        self.connection
+            .execute_batch("begin immediate transaction")?;
+        let result = (|| {
+            for item in items {
+                self.upsert_without_refresh_touch(item)?;
+            }
+            self.touch_refresh_timestamp()?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                self.connection.execute_batch("commit")?;
+                Ok(())
+            }
+            Err(error) => {
+                let _ = self.connection.execute_batch("rollback");
+                Err(error)
+            }
+        }
     }
 
     pub fn delete(&self, id: &str) -> anyhow::Result<()> {
@@ -164,9 +190,11 @@ impl Indexer {
     }
 
     pub fn refresh(&self, store: &IndexStore) -> anyhow::Result<IndexDiagnostics> {
+        let mut items = Vec::new();
         for root in &self.roots {
-            collect_root(root, 0, self.max_depth, store)?;
+            collect_root(root, 0, self.max_depth, &mut items)?;
         }
+        store.refresh_items(&items)?;
         store.diagnostics()
     }
 }
@@ -225,7 +253,7 @@ fn collect_root(
     root: &Path,
     depth: usize,
     max_depth: usize,
-    store: &IndexStore,
+    items: &mut Vec<IndexedItem>,
 ) -> anyhow::Result<()> {
     if depth > max_depth {
         return Ok(());
@@ -253,16 +281,16 @@ fn collect_root(
         };
 
         let id = format!("{}:{}", kind_to_id_prefix(&kind), path.display());
-        store.upsert(&IndexedItem {
+        items.push(IndexedItem {
             id,
             title: title.to_string(),
             path: path.display().to_string(),
             kind,
             modified_unix_seconds: modified_unix_seconds(&path),
-        })?;
+        });
 
         if file_type.is_dir() {
-            collect_root(&path, depth + 1, max_depth, store)?;
+            collect_root(&path, depth + 1, max_depth, items)?;
         }
     }
 

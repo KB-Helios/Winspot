@@ -65,12 +65,20 @@ public sealed class LauncherSettingsStoreTests
     {
         var root = Path.Combine(Path.GetTempPath(), $"winspot-portable-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
-        File.WriteAllText(Path.Combine(root, "Winspot.portable"), string.Empty);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Winspot.portable"), string.Empty);
 
-        var path = LauncherSettingsStore.ResolveSettingsPath(root, "C:\\Ignored");
+            var path = LauncherSettingsStore.ResolveSettingsPath(root, "C:\\Ignored");
 
-        Assert.AreEqual(Path.Combine(root, "data", "settings.json"), path);
-
-        Directory.Delete(root, recursive: true);
+            Assert.AreEqual(Path.Combine(root, "data", "settings.json"), path);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 }

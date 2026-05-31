@@ -182,22 +182,15 @@ fn handle_line(
         }
         IpcPayload::SearchStarted(search) => {
             let results = engine.search(&search.text, 20);
-            let first_batch = ResultBatch {
+            let batch = ResultBatch {
                 query_id: search.query_id.clone(),
-                is_final: false,
-                batch_index: 0,
-                results: results.iter().take(5).cloned().collect(),
-            };
-            let final_batch = ResultBatch {
-                query_id: first_batch.query_id.clone(),
                 is_final: true,
-                batch_index: 1,
+                batch_index: 0,
                 results,
             };
             Ok((
                 vec![
-                    IpcEnvelope::request(request_id.clone(), IpcPayload::ResultBatch(first_batch)),
-                    IpcEnvelope::request(request_id.clone(), IpcPayload::ResultBatch(final_batch)),
+                    IpcEnvelope::request(request_id.clone(), IpcPayload::ResultBatch(batch)),
                     IpcEnvelope::request(
                         request_id,
                         IpcPayload::SearchCompleted(SearchCompleted {

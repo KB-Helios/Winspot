@@ -38,6 +38,28 @@ fn index_store_upserts_searches_and_deletes_items() {
 }
 
 #[test]
+fn direct_upsert_does_not_mark_index_refresh_complete() {
+    let store = IndexStore::open_in_memory().expect("open in-memory index");
+    store
+        .upsert(&IndexedItem {
+            id: "file:C:\\Temp\\Roadmap.md".to_string(),
+            title: "Roadmap.md".to_string(),
+            path: "C:\\Temp\\Roadmap.md".to_string(),
+            kind: SearchResultKind::File,
+            modified_unix_seconds: 1,
+        })
+        .expect("upsert item");
+
+    assert_eq!(
+        store
+            .diagnostics()
+            .expect("read diagnostics")
+            .last_refresh_unix_seconds,
+        0
+    );
+}
+
+#[test]
 fn indexer_refreshes_file_and_folder_records() {
     let root = std::env::temp_dir().join(format!("winspot-index-{}", std::process::id()));
     let nested = root.join("Nested");
@@ -50,6 +72,7 @@ fn indexer_refreshes_file_and_folder_records() {
         .expect("refresh index");
 
     assert!(diagnostics.item_count >= 2);
+    assert!(diagnostics.last_refresh_unix_seconds > 0);
     assert!(
         store
             .search("note", 10)

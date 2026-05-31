@@ -36,6 +36,28 @@ fn text_file_preview_reads_small_utf8_files() {
 }
 
 #[test]
+fn text_file_preview_skips_files_larger_than_preview_limit() {
+    let path =
+        std::env::temp_dir().join(format!("winspot-preview-large-{}.txt", std::process::id()));
+    fs::write(&path, vec![b'a'; 8192]).expect("write large preview file");
+    let result = SearchResult {
+        id: format!("file:{}", path.display()),
+        title: "large.txt".to_string(),
+        subtitle: path.display().to_string(),
+        kind: SearchResultKind::File,
+        score: 1.0,
+        primary_action: ActionKind::Open,
+        ..SearchResult::default()
+    };
+
+    let payload = DefaultPreviewProvider.preview(&result);
+
+    assert!(matches!(payload, PreviewPayload::Metadata { .. }));
+
+    fs::remove_file(path).expect("cleanup");
+}
+
+#[test]
 fn image_preview_returns_path_payload_without_decoding_in_backend() {
     let result = SearchResult {
         id: "file:C:\\Temp\\photo.png".to_string(),

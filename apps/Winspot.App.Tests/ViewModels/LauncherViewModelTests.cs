@@ -115,6 +115,38 @@ public sealed class LauncherViewModelTests
     }
 
     [TestMethod]
+    public void FocusActions_UpdatesFocusedActionStateForActionStrip()
+    {
+        var viewModel = new LauncherViewModel(new FakeWinspotIpcClient());
+        viewModel.SelectedResult = new SearchResultItem(
+            "one",
+            "One",
+            "Subtitle",
+            "App",
+            1,
+            "Open",
+            new[]
+            {
+                new ActionItem("open", "Open"),
+                new ActionItem("copy", "Copy"),
+            });
+
+        Assert.AreEqual(0, viewModel.FocusedActionIndex);
+        Assert.IsTrue(viewModel.SelectedActions[0].IsFocused);
+        Assert.IsFalse(viewModel.SelectedActions[1].IsFocused);
+
+        viewModel.FocusResults();
+
+        Assert.AreEqual(-1, viewModel.FocusedActionIndex);
+        Assert.IsFalse(viewModel.SelectedActions.Any(action => action.IsFocused));
+
+        viewModel.FocusActions();
+
+        Assert.AreEqual(0, viewModel.FocusedActionIndex);
+        Assert.IsTrue(viewModel.SelectedActions[0].IsFocused);
+    }
+
+    [TestMethod]
     public async Task AcceptSelection_ReturnsTrueAfterSuccessfulAction()
     {
         var viewModel = new LauncherViewModel(new FakeWinspotIpcClient());

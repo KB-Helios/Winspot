@@ -44,7 +44,11 @@ impl PluginRegistry {
                 continue;
             }
             if let Err(err) = registry.load_manifest(&path) {
-                eprintln!("Failed to load plugin manifest at {}: {:?}", path.display(), err);
+                eprintln!(
+                    "Failed to load plugin manifest at {}: {:?}",
+                    path.display(),
+                    err
+                );
             }
         }
 

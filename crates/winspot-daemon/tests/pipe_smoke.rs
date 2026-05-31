@@ -74,7 +74,7 @@ mod windows_tests {
         match response.payload {
             IpcPayload::ResultBatch(batch) => {
                 assert_eq!(batch.query_id, "query-1");
-                assert!(!batch.is_final);
+                assert!(batch.is_final);
                 assert_eq!(batch.batch_index, 0);
                 assert!(
                     batch
@@ -142,7 +142,8 @@ mod windows_tests {
         match response.payload {
             IpcPayload::ResultBatch(batch) => {
                 assert_eq!(batch.query_id, "query-calculator");
-                assert!(!batch.is_final);
+                assert!(batch.is_final);
+                assert_eq!(batch.batch_index, 0);
                 assert_eq!(batch.results[0].title, "2 + 2 = 4");
                 assert_eq!(batch.results[0].primary_action, ActionKind::Copy);
             }

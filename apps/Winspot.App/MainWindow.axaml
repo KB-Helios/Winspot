@@ -66,6 +66,17 @@
         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
             <Setter Property="Background" Value="#FF1A2230" />
         </Style>
+
+        <Style Selector="Border.action-chip">
+            <Setter Property="Background" Value="#FF202938" />
+            <Setter Property="BorderBrush" Value="#335F83A8" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style Selector="Border.action-chip.focused">
+            <Setter Property="Background" Value="#FF2A3B52" />
+            <Setter Property="BorderBrush" Value="#FF7FB4FF" />
+        </Style>
     </Window.Styles>
 
     <Panel ClipToBounds="False">
@@ -202,10 +213,11 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate
-                                DataType="models:ActionItem"
-                                x:DataType="models:ActionItem">
+                                DataType="models:ActionViewItem"
+                                x:DataType="models:ActionViewItem">
                                 <Border
-                                    Background="#FF202938"
+                                    Classes="action-chip"
+                                    Classes.focused="{Binding IsFocused}"
                                     CornerRadius="8"
                                     Padding="9,4">
                                     <TextBlock

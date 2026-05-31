@@ -20,7 +20,8 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private string _statusText = "Start typing to search";
     private string _hotkeyHint;
     private string _hotkeyStatusText = "Hotkey not registered yet";
-    private IReadOnlyList<ActionItem> _selectedActions = Array.Empty<ActionItem>();
+    private IReadOnlyList<ActionItem> _selectedResultActions = Array.Empty<ActionItem>();
+    private IReadOnlyList<ActionViewItem> _selectedActions = Array.Empty<ActionViewItem>();
     private int _focusedActionIndex = -1;
 
     public LauncherViewModel(IWinspotIpcClient ipcClient, HotkeyBinding? hotkey = null)
@@ -82,14 +83,15 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             if (SetField(ref _selectedResult, value))
             {
-                SelectedActions = value?.DisplayActions ?? Array.Empty<ActionItem>();
-                FocusedActionIndex = SelectedActions.Count > 0 ? 0 : -1;
+                _selectedResultActions = value?.DisplayActions ?? Array.Empty<ActionItem>();
+                FocusedActionIndex = _selectedResultActions.Count > 0 ? 0 : -1;
+                RefreshSelectedActions();
                 _ = RefreshPreviewAsync(value);
             }
         }
     }
 
-    public IReadOnlyList<ActionItem> SelectedActions
+    public IReadOnlyList<ActionViewItem> SelectedActions
     {
         get => _selectedActions;
         private set => SetField(ref _selectedActions, value);
@@ -98,7 +100,13 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     public int FocusedActionIndex
     {
         get => _focusedActionIndex;
-        private set => SetField(ref _focusedActionIndex, value);
+        private set
+        {
+            if (SetField(ref _focusedActionIndex, value))
+            {
+                RefreshSelectedActions();
+            }
+        }
     }
 
     public string PreviewBody
@@ -166,7 +174,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
     public void FocusActions()
     {
-        FocusedActionIndex = SelectedActions.Count > 0 ? 0 : -1;
+        FocusedActionIndex = _selectedResultActions.Count > 0 ? 0 : -1;
     }
 
     public void FocusResults()
@@ -187,6 +195,16 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
             ? 0
             : Math.Clamp(currentIndex + delta, 0, Results.Count - 1);
         SelectedResult = Results[next];
+    }
+
+    private void RefreshSelectedActions()
+    {
+        SelectedActions = _selectedResultActions
+            .Select((action, index) => new ActionViewItem(
+                action.Id,
+                action.Label,
+                index == FocusedActionIndex))
+            .ToArray();
     }
 
     private async Task RefreshAsync(string query)

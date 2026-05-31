@@ -126,8 +126,11 @@ fn preview_file(result: &SearchResult) -> PreviewPayload {
         };
     }
 
-    if let Ok(bytes) = fs::read(&path) {
-        if bytes.len() <= TEXT_PREVIEW_MAX_BYTES {
+    if fs::metadata(&path)
+        .map(|metadata| metadata.len() <= TEXT_PREVIEW_MAX_BYTES as u64)
+        .unwrap_or(false)
+    {
+        if let Ok(bytes) = fs::read(&path) {
             if let Ok(text) = String::from_utf8(bytes) {
                 return PreviewPayload::Text {
                     title: result.title.clone(),
