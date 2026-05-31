@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.Versioning;
 
 using Microsoft.Win32;
@@ -40,7 +39,7 @@ internal static class StartupRegistration
     [SupportedOSPlatform("windows")]
     private static void Enable()
     {
-        var executablePath = Process.GetCurrentProcess().MainModule?.FileName;
+        var executablePath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(executablePath))
         {
             return;

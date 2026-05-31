@@ -178,8 +178,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return modifiers;
     }
 
-    private static bool IsKeyValid(string key)
+    private static bool IsKeyValid(string? key)
     {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
         var trimmed = key.Trim();
         if (trimmed.Length == 1)
         {

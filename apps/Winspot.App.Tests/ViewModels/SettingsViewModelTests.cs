@@ -116,6 +116,20 @@ public sealed class SettingsViewModelTests
     }
 
     [TestMethod]
+    public void TrySave_WhenKeyClearedToNullOrEmpty_FailsWithoutThrowing()
+    {
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath));
+
+        viewModel.Key = null!;
+        Assert.IsFalse(viewModel.IsValid);
+        Assert.IsFalse(viewModel.TrySave());
+
+        viewModel.Key = "   ";
+        Assert.IsFalse(viewModel.IsValid);
+        Assert.IsFalse(viewModel.TrySave());
+    }
+
+    [TestMethod]
     public void TrySave_WithValidChord_PersistsAndRoundTrips()
     {
         var store = new LauncherSettingsStore(_settingsPath);

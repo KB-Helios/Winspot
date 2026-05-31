@@ -117,7 +117,8 @@ public sealed partial class App : Application
     {
         try
         {
-            return new WindowIcon(AssetLoader.Open(new Uri("avares://Winspot.App/Assets/AppIcon.ico")));
+            using var stream = AssetLoader.Open(new Uri("avares://Winspot.App/Assets/AppIcon.ico"));
+            return new WindowIcon(stream);
         }
         catch
         {
