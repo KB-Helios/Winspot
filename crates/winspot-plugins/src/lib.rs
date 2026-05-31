@@ -43,7 +43,9 @@ impl PluginRegistry {
             if path.extension().and_then(|value| value.to_str()) != Some("json") {
                 continue;
             }
-            registry.load_manifest(path)?;
+            if let Err(err) = registry.load_manifest(&path) {
+                eprintln!("Failed to load plugin manifest at {}: {:?}", path.display(), err);
+            }
         }
 
         Ok(registry)
