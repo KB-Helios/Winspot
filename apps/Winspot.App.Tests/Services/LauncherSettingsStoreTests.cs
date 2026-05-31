@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -57,5 +58,27 @@ public sealed class LauncherSettingsStoreTests
         CollectionAssert.AreEquivalent(new List<string> { "Win" }, reloaded.Hotkey.Modifiers);
         Assert.IsTrue(reloaded.LaunchOnStartup);
         Assert.IsFalse(reloaded.ShowTrayIcon);
+    }
+
+    [TestMethod]
+    public void ResolveSettingsPath_WhenPortableMarkerExists_UsesLocalDataFolder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"winspot-portable-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Winspot.portable"), string.Empty);
+
+            var path = LauncherSettingsStore.ResolveSettingsPath(root, "C:\\Ignored");
+
+            Assert.AreEqual(Path.Combine(root, "data", "settings.json"), path);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 }

@@ -57,9 +57,14 @@ public sealed class LauncherSettingsStore
         File.WriteAllText(_settingsPath, JsonSerializer.Serialize(settings, JsonOptions));
     }
 
-    private static string DefaultSettingsPath()
+    public static string ResolveSettingsPath(string baseDirectory, string? localAppData)
     {
-        var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        var portableMarker = Path.Combine(baseDirectory, "Winspot.portable");
+        if (File.Exists(portableMarker))
+        {
+            return Path.Combine(baseDirectory, "data", "settings.json");
+        }
+
         if (string.IsNullOrWhiteSpace(localAppData))
         {
             var userProfile = Environment.GetEnvironmentVariable("USERPROFILE");
@@ -75,5 +80,11 @@ public sealed class LauncherSettingsStore
         }
 
         return Path.Combine(localAppData, "Winspot", "settings.json");
+    }
+
+    private static string DefaultSettingsPath()
+    {
+        var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        return ResolveSettingsPath(AppContext.BaseDirectory, localAppData);
     }
 }

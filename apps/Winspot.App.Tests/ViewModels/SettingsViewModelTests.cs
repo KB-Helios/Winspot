@@ -170,4 +170,14 @@ public sealed class SettingsViewModelTests
         Assert.IsNotNull(captured);
         Assert.AreEqual("M", captured!.Hotkey.Key);
     }
+
+    [TestMethod]
+    public void SetHotkeyRegistrationStatus_WhenUnavailable_KeepsConflictVisible()
+    {
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath));
+
+        viewModel.SetHotkeyRegistrationStatus(false);
+
+        Assert.IsTrue(viewModel.StatusMessage.Contains("previous hotkey"));
+    }
 }

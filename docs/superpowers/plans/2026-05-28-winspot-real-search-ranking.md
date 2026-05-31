@@ -562,7 +562,7 @@ Expected:
 
 ```text
 Rust tests pass.
-WinUI build succeeds with 0 errors.
+Avalonia build succeeds with 0 errors.
 ```
 
 - [ ] **Step 3: Launch daemon and app**

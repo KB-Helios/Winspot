@@ -29,7 +29,8 @@ public sealed partial class SettingsWindow : Window
 
     private void OnSaveClick(object? sender, RoutedEventArgs e)
     {
-        if (ViewModel.TrySave())
+        if (ViewModel.TrySave()
+            && !ViewModel.StatusMessage.Contains("unavailable", StringComparison.OrdinalIgnoreCase))
         {
             Close();
         }

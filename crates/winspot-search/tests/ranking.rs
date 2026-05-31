@@ -27,6 +27,7 @@ fn rank_results_orders_by_score_then_title() {
             kind: SearchResultKind::Command,
             score: 0.0,
             primary_action: ActionKind::RunCommand,
+            ..SearchResult::default()
         },
         SearchResult {
             id: "app:notepad".to_string(),
@@ -35,6 +36,7 @@ fn rank_results_orders_by_score_then_title() {
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
+            ..SearchResult::default()
         },
     ];
 
@@ -54,6 +56,7 @@ fn rank_results_with_usage_boosts_frequent_recent_results() {
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
+            ..SearchResult::default()
         },
         SearchResult {
             id: "app:notepad".to_string(),
@@ -62,6 +65,7 @@ fn rank_results_with_usage_boosts_frequent_recent_results() {
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
+            ..SearchResult::default()
         },
     ];
     let mut usage = UsageSnapshot::default();
@@ -88,6 +92,7 @@ fn rank_results_with_usage_does_not_include_text_misses() {
         kind: SearchResultKind::App,
         score: 0.0,
         primary_action: ActionKind::Open,
+        ..SearchResult::default()
     }];
     let mut usage = UsageSnapshot::default();
     usage.insert(

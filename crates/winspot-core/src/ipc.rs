@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 use crate::search::{ActionKind, SearchResult};
 
 pub const PROTOCOL_VERSION: u16 = 1;
+pub const MIN_PROTOCOL_VERSION: u16 = 1;
+pub const MAX_PROTOCOL_VERSION: u16 = 2;
+pub const MAX_JSON_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,13 +28,34 @@ impl IpcEnvelope {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum IpcPayload {
+    Hello(Hello),
+    HelloAccepted(HelloAccepted),
     SearchStarted(SearchStarted),
     ResultBatch(ResultBatch),
+    SearchCompleted(SearchCompleted),
+    CancelRequest(CancelRequest),
     ActionRequested(ActionRequested),
     ActionCompleted(ActionCompleted),
     PreviewRequested(PreviewRequested),
+    PreviewChunk(PreviewChunk),
     PreviewReady(PreviewReady),
-    Error(IpcError),
+    Error(BackendError),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Hello {
+    pub min_protocol_version: u16,
+    pub max_protocol_version: u16,
+    pub client_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelloAccepted {
+    pub protocol_version: u16,
+    pub max_json_line_bytes: usize,
+    pub server_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,7 +70,22 @@ pub struct SearchStarted {
 pub struct ResultBatch {
     pub query_id: String,
     pub is_final: bool,
+    #[serde(default)]
+    pub batch_index: u32,
     pub results: Vec<SearchResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCompleted {
+    pub query_id: String,
+    pub cancelled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelRequest {
+    pub request_to_cancel: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -84,7 +123,18 @@ pub struct PreviewReady {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct IpcError {
+pub struct PreviewChunk {
+    pub preview_id: String,
+    pub title: String,
+    pub body: String,
+    pub is_final: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackendError {
     pub code: String,
     pub message: String,
+    #[serde(default)]
+    pub retryable: bool,
 }

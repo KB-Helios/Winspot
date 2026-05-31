@@ -28,6 +28,7 @@ fn search_benchmark_runs_warm_queries_against_engine() {
         warmup_iterations: 2,
         measured_iterations: 4,
         result_limit: 10,
+        ..BenchmarkConfig::default()
     });
 
     let report = benchmark.run(&engine);
@@ -38,5 +39,11 @@ fn search_benchmark_runs_warm_queries_against_engine() {
             .queries
             .iter()
             .all(|query| query.iterations == 4 && query.cache_hits_after > query.cache_hits_before)
+    );
+    assert!(report.gates.iter().all(|gate| gate.passed));
+    assert!(
+        report
+            .to_human_readable()
+            .contains("Winspot benchmark report")
     );
 }

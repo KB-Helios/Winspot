@@ -69,6 +69,7 @@ fn search_engine_applies_usage_snapshot_to_ranking() {
                 kind: SearchResultKind::App,
                 score: 0.0,
                 primary_action: ActionKind::Open,
+                ..SearchResult::default()
             },
             SearchResult {
                 id: "app:notepad".to_string(),
@@ -77,6 +78,7 @@ fn search_engine_applies_usage_snapshot_to_ranking() {
                 kind: SearchResultKind::App,
                 score: 0.0,
                 primary_action: ActionKind::Open,
+                ..SearchResult::default()
             },
         ],
         usage,
@@ -129,6 +131,7 @@ fn record_usage_updates_ranking_and_invalidates_cache_within_session() {
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
+            ..SearchResult::default()
         },
         SearchResult {
             id: "app:notepad".to_string(),
@@ -137,6 +140,7 @@ fn record_usage_updates_ranking_and_invalidates_cache_within_session() {
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
+            ..SearchResult::default()
         },
     ]);
 
@@ -279,6 +283,7 @@ impl SearchProvider for AtomicCountingProvider {
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
+            ..SearchResult::default()
         }]
     }
 }
@@ -293,6 +298,7 @@ impl SearchProvider for CountingProvider {
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
+            ..SearchResult::default()
         }]
     }
 }

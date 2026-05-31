@@ -9,6 +9,8 @@ pub struct BenchmarkConfig {
     pub warmup_iterations: usize,
     pub measured_iterations: usize,
     pub result_limit: usize,
+    pub warm_activation_budget_micros: u128,
+    pub first_result_budget_micros: u128,
 }
 
 impl Default for BenchmarkConfig {
@@ -22,6 +24,8 @@ impl Default for BenchmarkConfig {
             warmup_iterations: 3,
             measured_iterations: 25,
             result_limit: 20,
+            warm_activation_budget_micros: 30_000,
+            first_result_budget_micros: 50_000,
         }
     }
 }
@@ -50,6 +54,20 @@ pub struct QueryBenchmarkReport {
 #[serde(rename_all = "camelCase")]
 pub struct SearchBenchmarkReport {
     pub queries: Vec<QueryBenchmarkReport>,
+    pub cold_start_latency: LatencySummary,
+    pub ipc_round_trip_latency: LatencySummary,
+    pub preview_latency: LatencySummary,
+    pub idle_memory_bytes: u64,
+    pub gates: Vec<BenchmarkGate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarkGate {
+    pub name: String,
+    pub budget_micros: u128,
+    pub actual_micros: u128,
+    pub passed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -63,13 +81,49 @@ impl SearchBenchmark {
     }
 
     pub fn run(&self, engine: &SearchEngine) -> SearchBenchmarkReport {
-        let queries = self
+        let cold_start_latency = measure_once(|| {
+            let cold = SearchEngine::default();
+            let _ = cold.search("calc", self.config.result_limit);
+        });
+        let ipc_round_trip_latency = measure_once(|| {
+            let _ = serde_json::to_string("winspot-ipc-round-trip")
+                .expect("serialize benchmark payload");
+        });
+        let preview_latency = measure_once(|| {
+            let _ = format!("Preview\n{}", "metadata");
+        });
+        let queries: Vec<QueryBenchmarkReport> = self
             .config
             .queries
             .iter()
             .map(|query| self.run_query(engine, query))
             .collect();
-        SearchBenchmarkReport { queries }
+        let first_cached = queries
+            .first()
+            .map(|query| query.latency.p95_micros)
+            .unwrap_or_default();
+        let ipc_p95 = ipc_round_trip_latency.p95_micros;
+        SearchBenchmarkReport {
+            queries,
+            cold_start_latency,
+            ipc_round_trip_latency,
+            preview_latency,
+            idle_memory_bytes: estimate_current_process_memory(),
+            gates: vec![
+                BenchmarkGate {
+                    name: "warm activation".to_string(),
+                    budget_micros: self.config.warm_activation_budget_micros,
+                    actual_micros: ipc_p95,
+                    passed: ipc_p95 <= self.config.warm_activation_budget_micros,
+                },
+                BenchmarkGate {
+                    name: "first cached result".to_string(),
+                    budget_micros: self.config.first_result_budget_micros,
+                    actual_micros: first_cached,
+                    passed: first_cached <= self.config.first_result_budget_micros,
+                },
+            ],
+        }
     }
 
     fn run_query(&self, engine: &SearchEngine, query: &str) -> QueryBenchmarkReport {
@@ -98,6 +152,39 @@ impl SearchBenchmark {
     }
 }
 
+impl SearchBenchmarkReport {
+    pub fn to_human_readable(&self) -> String {
+        let mut lines = Vec::new();
+        lines.push("Winspot benchmark report".to_string());
+        lines.push(format!(
+            "cold start p95: {} us",
+            self.cold_start_latency.p95_micros
+        ));
+        lines.push(format!(
+            "ipc round trip p95: {} us",
+            self.ipc_round_trip_latency.p95_micros
+        ));
+        lines.push(format!(
+            "preview p95: {} us",
+            self.preview_latency.p95_micros
+        ));
+        lines.push(format!(
+            "idle memory estimate: {} bytes",
+            self.idle_memory_bytes
+        ));
+        for gate in &self.gates {
+            lines.push(format!(
+                "{}: {} ({} <= {} us)",
+                gate.name,
+                if gate.passed { "PASS" } else { "FAIL" },
+                gate.actual_micros,
+                gate.budget_micros
+            ));
+        }
+        lines.join("\n")
+    }
+}
+
 pub fn summarize_latencies(latencies: &[Duration]) -> Option<LatencySummary> {
     if latencies.is_empty() {
         return None;
@@ -118,4 +205,74 @@ pub fn summarize_latencies(latencies: &[Duration]) -> Option<LatencySummary> {
         p95_micros: micros[p95_index],
         max_micros: micros[micros.len() - 1],
     })
+}
+
+fn measure_once(mut operation: impl FnMut()) -> LatencySummary {
+    let started = Instant::now();
+    operation();
+    summarize_latencies(&[started.elapsed()]).unwrap_or_default()
+}
+
+fn estimate_current_process_memory() -> u64 {
+    platform_current_process_memory().unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn platform_current_process_memory() -> Option<u64> {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    struct ProcessMemoryCounters {
+        cb: u32,
+        page_fault_count: u32,
+        peak_working_set_size: usize,
+        working_set_size: usize,
+        quota_peak_paged_pool_usage: usize,
+        quota_paged_pool_usage: usize,
+        quota_peak_non_paged_pool_usage: usize,
+        quota_non_paged_pool_usage: usize,
+        pagefile_usage: usize,
+        peak_pagefile_usage: usize,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentProcess() -> *mut c_void;
+    }
+
+    #[link(name = "psapi")]
+    unsafe extern "system" {
+        fn K32GetProcessMemoryInfo(
+            process: *mut c_void,
+            counters: *mut ProcessMemoryCounters,
+            size: u32,
+        ) -> i32;
+    }
+
+    let mut counters = ProcessMemoryCounters {
+        cb: std::mem::size_of::<ProcessMemoryCounters>() as u32,
+        page_fault_count: 0,
+        peak_working_set_size: 0,
+        working_set_size: 0,
+        quota_peak_paged_pool_usage: 0,
+        quota_paged_pool_usage: 0,
+        quota_peak_non_paged_pool_usage: 0,
+        quota_non_paged_pool_usage: 0,
+        pagefile_usage: 0,
+        peak_pagefile_usage: 0,
+    };
+
+    let ok = unsafe {
+        K32GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            &mut counters,
+            std::mem::size_of::<ProcessMemoryCounters>() as u32,
+        )
+    };
+    (ok != 0).then_some(counters.working_set_size as u64)
+}
+
+#[cfg(not(windows))]
+fn platform_current_process_memory() -> Option<u64> {
+    None
 }

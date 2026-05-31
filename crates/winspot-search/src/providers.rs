@@ -2,9 +2,12 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::Mutex,
 };
 
 use winspot_core::{ActionKind, SearchResult, SearchResultKind};
+use winspot_index::IndexStore;
+use winspot_plugins::built_in_plugin_manifests;
 
 pub trait SearchProvider {
     fn collect_results(&self) -> Vec<SearchResult>;
@@ -226,6 +229,9 @@ impl SearchProvider for BuiltinCommandProvider {
                 kind: SearchResultKind::Command,
                 score: 0.0,
                 primary_action: ActionKind::RunCommand,
+                actions: Vec::new(),
+                source: Some("builtin".to_string()),
+                icon_hint: None,
             },
             SearchResult {
                 id: "command:terminal".to_string(),
@@ -234,6 +240,9 @@ impl SearchProvider for BuiltinCommandProvider {
                 kind: SearchResultKind::Command,
                 score: 0.0,
                 primary_action: ActionKind::RunCommand,
+                actions: Vec::new(),
+                source: Some("builtin".to_string()),
+                icon_hint: None,
             },
         ]
     }
@@ -259,6 +268,9 @@ impl SearchProvider for WindowsSettingsProvider {
                 kind: SearchResultKind::Setting,
                 score: 0.0,
                 primary_action: ActionKind::Open,
+                actions: Vec::new(),
+                source: Some("settings".to_string()),
+                icon_hint: None,
             })
             .collect()
     }
@@ -374,6 +386,102 @@ impl SearchProvider for RunningProcessProvider {
     }
 }
 
+#[derive(Debug)]
+pub struct IndexSearchProvider {
+    store: Mutex<IndexStore>,
+    limit: usize,
+}
+
+impl IndexSearchProvider {
+    pub fn new(store: IndexStore, limit: usize) -> Self {
+        Self {
+            store: Mutex::new(store),
+            limit,
+        }
+    }
+}
+
+impl DynamicSearchProvider for IndexSearchProvider {
+    fn search(&self, query: &str) -> Vec<SearchResult> {
+        self.store
+            .lock()
+            .map(|store| store.search(query, self.limit).unwrap_or_default())
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BrowserHistoryProvider {
+    roots: Vec<PathBuf>,
+}
+
+impl BrowserHistoryProvider {
+    pub fn new(roots: Vec<PathBuf>) -> Self {
+        Self { roots }
+    }
+
+    pub fn collect_results(&self) -> Vec<SearchResult> {
+        <Self as SearchProvider>::collect_results(self)
+    }
+}
+
+impl SearchProvider for BrowserHistoryProvider {
+    fn collect_results(&self) -> Vec<SearchResult> {
+        let mut results = Vec::new();
+        for root in &self.roots {
+            let Ok(content) = fs::read_to_string(root) else {
+                continue;
+            };
+            for line in content.lines() {
+                let Some((title, url)) = line.split_once('\t') else {
+                    continue;
+                };
+                if title.trim().is_empty() || url.trim().is_empty() {
+                    continue;
+                }
+                results.push(SearchResult {
+                    id: format!("browser:{}", url.trim()),
+                    title: title.trim().to_string(),
+                    subtitle: url.trim().to_string(),
+                    kind: SearchResultKind::BrowserHistory,
+                    score: 0.0,
+                    primary_action: ActionKind::Open,
+                    actions: Vec::new(),
+                    source: Some("browser-history".to_string()),
+                    icon_hint: None,
+                });
+            }
+        }
+        results
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct BuiltInPluginProvider;
+
+impl DynamicSearchProvider for BuiltInPluginProvider {
+    fn search(&self, query: &str) -> Vec<SearchResult> {
+        let normalized = query.trim().to_lowercase();
+        built_in_plugin_manifests()
+            .into_iter()
+            .filter(|manifest| {
+                manifest.enabled && manifest.name.to_lowercase().contains(&normalized)
+            })
+            .map(|manifest| SearchResult {
+                id: format!("plugin:{}", manifest.id),
+                title: manifest.name,
+                subtitle: "Internal plugin".to_string(),
+                kind: SearchResultKind::Plugin,
+                score: 0.0,
+                primary_action: ActionKind::PluginCommand,
+                actions: Vec::new(),
+                source: Some("plugin".to_string()),
+                icon_hint: None,
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct CalculatorProvider;
 
@@ -391,6 +499,9 @@ impl DynamicSearchProvider for CalculatorProvider {
             kind: SearchResultKind::Command,
             score: 0.0,
             primary_action: ActionKind::Copy,
+            actions: Vec::new(),
+            source: Some("calculator".to_string()),
+            icon_hint: None,
         }]
     }
 }
@@ -421,6 +532,9 @@ impl DynamicSearchProvider for UnitConversionProvider {
             kind: SearchResultKind::Command,
             score: 0.0,
             primary_action: ActionKind::Copy,
+            actions: Vec::new(),
+            source: Some("conversion".to_string()),
+            icon_hint: None,
         }]
     }
 }
@@ -479,6 +593,9 @@ fn collect_shortcuts(root: &Path, depth: usize, results: &mut Vec<SearchResult>)
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
+            actions: Vec::new(),
+            source: Some("start-menu".to_string()),
+            icon_hint: None,
         });
     }
 }
@@ -768,6 +885,9 @@ fn collect_file_system_entries(
                 kind: SearchResultKind::Folder,
                 score: 0.0,
                 primary_action: ActionKind::Open,
+                actions: Vec::new(),
+                source: Some("filesystem".to_string()),
+                icon_hint: None,
             });
             collect_file_system_entries(&path, depth + 1, max_depth, max_entries, results);
             continue;
@@ -781,6 +901,9 @@ fn collect_file_system_entries(
                 kind: SearchResultKind::File,
                 score: 0.0,
                 primary_action: ActionKind::Open,
+                actions: Vec::new(),
+                source: Some("filesystem".to_string()),
+                icon_hint: None,
             });
         }
     }
@@ -811,6 +934,9 @@ fn parse_process_line(line: &str) -> Option<SearchResult> {
         kind: SearchResultKind::Process,
         score: 0.0,
         primary_action: ActionKind::Copy,
+        actions: Vec::new(),
+        source: Some("process".to_string()),
+        icon_hint: None,
     })
 }
 

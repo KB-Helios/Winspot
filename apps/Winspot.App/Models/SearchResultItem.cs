@@ -6,8 +6,15 @@ public sealed record SearchResultItem(
     string Subtitle,
     string Kind,
     double Score,
-    string PrimaryAction)
+    string PrimaryAction,
+    IReadOnlyList<ActionItem>? Actions = null,
+    string? Source = null,
+    string? IconHint = null)
 {
+    public IReadOnlyList<ActionItem> DisplayActions => Actions is { Count: > 0 }
+        ? Actions
+        : new[] { new ActionItem(PrimaryAction, PrimaryAction) };
+
     public string IconGlyph => Kind switch
     {
         "App" => "\uECAA",
@@ -38,3 +45,12 @@ public sealed record SearchResultItem(
     private string? StripIdPrefix(string prefix) =>
         Id.StartsWith(prefix, StringComparison.Ordinal) ? Id[prefix.Length..] : null;
 }
+
+public sealed record ActionItem(
+    string Id,
+    string Label);
+
+public sealed record ActionViewItem(
+    string Id,
+    string Label,
+    bool IsFocused);
