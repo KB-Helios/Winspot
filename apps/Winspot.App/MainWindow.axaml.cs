@@ -19,14 +19,19 @@ public sealed partial class MainWindow : Window
     private static readonly TimeSpan RevealDuration = TimeSpan.FromMilliseconds(160);
     private static readonly CubicEaseOut RevealEasing = new();
 
-    private readonly LauncherSettings _settings;
     private CancellationTokenSource? _boundsAnimationCancellation;
     private GlobalHotkeyService? _hotkeyService;
+    private HotkeyBinding _hotkey;
 
     public MainWindow()
+        : this(new LauncherSettingsStore().Load())
     {
-        _settings = new LauncherSettingsStore().Load();
-        ViewModel = new LauncherViewModel(new WinspotIpcClient(), _settings.Hotkey);
+    }
+
+    public MainWindow(LauncherSettings settings)
+    {
+        _hotkey = settings.Hotkey;
+        ViewModel = new LauncherViewModel(new WinspotIpcClient(), settings.Hotkey);
         DataContext = ViewModel;
         InitializeComponent();
 
@@ -38,6 +43,32 @@ public sealed partial class MainWindow : Window
     }
 
     public LauncherViewModel ViewModel { get; }
+
+    /// Brings the launcher to the foreground and focuses the search box. Used by
+    /// the tray icon's "Open Winspot" command.
+    public void ShowLauncher()
+    {
+        Show();
+        Activate();
+        Reveal();
+    }
+
+    /// Re-registers the global hotkey and refreshes the hint after the user
+    /// changes the activation chord in settings.
+    public void ApplyHotkey(HotkeyBinding hotkey)
+    {
+        _hotkey = hotkey;
+        ViewModel.UpdateHotkeyHint(hotkey);
+
+        if (_hotkeyService is not null)
+        {
+            _hotkeyService.Pressed -= OnGlobalHotkeyPressed;
+            _hotkeyService.Dispose();
+            _hotkeyService = null;
+        }
+
+        RegisterHotkey();
+    }
 
     public void FocusSearch()
     {
@@ -242,7 +273,7 @@ public sealed partial class MainWindow : Window
 
         var hotkeyService = new GlobalHotkeyService(handle);
         hotkeyService.Pressed += OnGlobalHotkeyPressed;
-        if (hotkeyService.Register(_settings.Hotkey))
+        if (hotkeyService.Register(_hotkey))
         {
             _hotkeyService = hotkeyService;
             return;

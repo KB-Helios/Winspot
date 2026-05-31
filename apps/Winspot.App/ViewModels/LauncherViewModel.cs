@@ -18,11 +18,12 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private string _previewTitle = "Preview";
     private SearchResultItem? _selectedResult;
     private string _statusText = "Start typing to search";
+    private string _hotkeyHint;
 
     public LauncherViewModel(IWinspotIpcClient ipcClient, HotkeyBinding? hotkey = null)
     {
         _ipcClient = ipcClient;
-        HotkeyHint = (hotkey ?? new HotkeyBinding()).ToDisplayString();
+        _hotkeyHint = (hotkey ?? new HotkeyBinding()).ToDisplayString();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -31,7 +32,17 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
     /// The configured activation chord (e.g. "Ctrl Alt Space"), shown in the
     /// search box hint so it always reflects the user's actual hotkey.
-    public string HotkeyHint { get; }
+    public string HotkeyHint
+    {
+        get => _hotkeyHint;
+        private set => SetField(ref _hotkeyHint, value);
+    }
+
+    /// Refreshes the displayed chord after the user changes the hotkey in settings.
+    public void UpdateHotkeyHint(HotkeyBinding hotkey)
+    {
+        HotkeyHint = hotkey.ToDisplayString();
+    }
 
     public bool IsExpanded => !string.IsNullOrWhiteSpace(Query);
 
