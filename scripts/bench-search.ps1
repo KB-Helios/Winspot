@@ -1,4 +1,4 @@
 $ErrorActionPreference = 'Stop'
 
-Write-Host '== Warm search benchmark =='
+Write-Host '== Winspot benchmark suite =='
 rtk cargo run -p winspot-bench --release

@@ -6,7 +6,7 @@ Date: 2026-05-27
 
 Winspot is a native Windows 11 global launcher designed to feel invisible until summoned. It opens from a configurable system-wide hotkey, accepts keyboard-first queries immediately, streams ranked results from a Rust backend, previews selected content asynchronously, and executes actions without blocking the UI thread.
 
-The product targets a native, low-latency desktop experience: WinUI 3 for presentation, Rust for indexing/search/plugins/actions, local-first storage, telemetry disabled by default, and no Electron or heavy web runtime.
+The product targets a native, low-latency desktop experience: Avalonia 12 for presentation, Rust for indexing/search/plugins/actions, local-first storage, telemetry disabled by default, and no Electron or heavy web runtime.
 
 ## Scope
 
@@ -14,7 +14,7 @@ This design covers the full product architecture and the first buildable vertica
 
 The first implementation milestone proves the product spine:
 
-- Launch a native WinUI 3 app from the local development workflow.
+- Launch a native Avalonia 12 app from the local development workflow.
 - Register or simulate a configurable global launcher hotkey.
 - Show a compact launcher window with focused search input.
 - Connect to a Rust backend over async IPC.
@@ -37,14 +37,14 @@ These remain first-class future requirements, but the first milestone should bui
 
 ## Architecture
 
-Winspot uses a layered monorepo with a C# WinUI 3 UI process and a Rust backend process. The UI owns presentation, input, focus, windowing, accessibility, animation, and theme behavior. The backend owns search, indexing, ranking, plugins, previews, action execution, local persistence, and performance measurement.
+Winspot uses a layered monorepo with a C# Avalonia 12 UI process and a Rust backend process. The UI owns presentation, input, focus, windowing, accessibility, animation, and theme behavior. The backend owns search, indexing, ranking, plugins, previews, action execution, local persistence, and performance measurement.
 
 Proposed repository shape:
 
 ```text
 Winspot/
   apps/
-    Winspot.App/          C# WinUI 3 launcher UI
+    Winspot.App/          C# Avalonia 12 launcher UI
     Winspot.Tray/         optional later if tray is split
   crates/
     winspot-core/         shared Rust types, ranking inputs, actions, config
@@ -71,7 +71,7 @@ Runtime flow:
 
 ```text
 Global hotkey
-  -> WinUI UI process shows launcher on the active monitor
+  -> Avalonia UI process shows launcher on the active monitor
   -> Search input receives focus immediately
   -> UI streams query changes to Rust over IPC
   -> Rust fans out to search providers
@@ -82,13 +82,13 @@ Global hotkey
   -> Launcher hides after successful action unless the action requests otherwise
 ```
 
-The default development model is unpackaged WinUI 3 for repeatable command-line build and launch verification. The product architecture still reserves packaged MSIX and portable modes.
+The default development model is unpackaged Avalonia 12 for repeatable command-line build and launch verification. The product architecture still reserves packaged MSIX and portable modes.
 
-## WinUI App Design
+## Avalonia App Design
 
 The launcher is a transient command surface, not a normal document window. It stays hidden until summoned, appears centered on the active monitor, focuses the search box immediately, and dismisses with Escape or light-dismiss behavior.
 
-The WinUI app owns:
+The Avalonia app owns:
 
 - Hotkey configuration UI and launch activation handoff.
 - Launcher window placement, sizing, focus, and monitor awareness.
@@ -101,7 +101,7 @@ The WinUI app owns:
 - Settings, plugin management, benchmarks, and diagnostics pages.
 - Accessibility, localization readiness, theme support, high contrast, DPI, and multi-monitor behavior.
 
-The summoned launcher should use a compact custom window rather than a full `NavigationView`. Settings and developer tools can use a standard WinUI navigation shell later. The main launcher layout is:
+The summoned launcher should use a compact custom window rather than a full `NavigationView`. Settings and developer tools can use a standard Avalonia navigation shell later. The main launcher layout is:
 
 - Search input at the top.
 - Result list as the primary content.
@@ -296,7 +296,7 @@ Portable mode stores state beside the executable or in a configured portable dat
 
 Early development:
 
-- Unpackaged WinUI 3 app.
+- Unpackaged Avalonia 12 app.
 - Rust daemon launched by dev script or UI.
 - Direct command-line build, launch, and verification.
 
@@ -324,7 +324,7 @@ UI thread blocking:        no known synchronous disk/network/plugin work
 Index updates:             incremental, debounced, non-blocking
 ```
 
-The benchmark crate should ship early. It measures startup, activation, IPC round-trip latency, query latency, indexing throughput, plugin load time, preview latency, and memory usage. WinUI settings should later expose a diagnostics page using the same measurements.
+The benchmark crate should ship early. It measures startup, activation, IPC round-trip latency, query latency, indexing throughput, plugin load time, preview latency, and memory usage. Avalonia settings should later expose a diagnostics page using the same measurements.
 
 ## Error Handling
 
@@ -358,7 +358,7 @@ Rust verification:
 - Integration tests for provider fanout, cancellation, plugin load/unload, and action execution.
 - Benchmarks for query latency, memory, startup, IPC, indexing, and preview latency.
 
-WinUI verification:
+Avalonia verification:
 
 - Build and launch verification after UI changes.
 - Objective top-level window evidence after launch.
@@ -384,12 +384,12 @@ hotkey
 
 1. Repository and toolchain foundation.
    - Initialize monorepo.
-   - Verify WinUI toolchain.
-   - Scaffold unpackaged WinUI app.
+   - Verify Avalonia toolchain.
+   - Scaffold unpackaged Avalonia app.
    - Scaffold Rust workspace and core crates.
 
 2. UI/backend spine.
-   - Launch WinUI app.
+   - Launch Avalonia app.
    - Start/connect Rust backend.
    - Define IPC messages.
    - Send query and receive mocked streaming results.
@@ -451,7 +451,7 @@ hotkey
 
 These defaults remove ambiguity for the implementation plan while preserving room for benchmark-driven changes:
 
-- The WinUI app process owns the global hotkey, tray icon, and launcher window in early builds. The Rust backend owns indexing, search, actions, previews, plugins, and benchmark collection. A separate tray process is added only if measurements show the UI host cannot meet idle memory or activation targets.
+- The Avalonia app process owns the global hotkey, tray icon, and launcher window in early builds. The Rust backend owns indexing, search, actions, previews, plugins, and benchmark collection. A separate tray process is added only if measurements show the UI host cannot meet idle memory or activation targets.
 - IPC starts with versioned JSON messages over async named pipes for debuggability. The protocol remains transport-neutral, and hot paths can move to a compact binary encoding only if IPC benchmarks threaten the latency budget.
 - Local persistence starts with SQLite for usage events, plugin trust state, index metadata, and diagnostics history. Portable mode stores the database under the portable data directory. Simple user-editable settings can use structured JSON or TOML files.
 - Phase 1 plugins are internal Rust plugins used to prove the SDK. Out-of-process plugin hosting must land before third-party plugin support is considered stable. WASM support follows after capability enforcement and crash isolation are working.

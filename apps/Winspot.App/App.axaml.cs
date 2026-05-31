@@ -101,7 +101,11 @@ public sealed partial class App : Application
 
     private void OnSettingsSaved(object? sender, LauncherSettings settings)
     {
-        _mainWindow?.ApplyHotkey(settings.Hotkey);
+        var registered = _mainWindow?.ApplyHotkey(settings.Hotkey) ?? false;
+        if (sender is SettingsViewModel viewModel)
+        {
+            viewModel.SetHotkeyRegistrationStatus(registered);
+        }
         UpdateTrayVisibility(settings.ShowTrayIcon);
     }
 

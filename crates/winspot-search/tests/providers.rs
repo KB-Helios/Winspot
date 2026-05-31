@@ -2,8 +2,9 @@ use std::fs;
 
 use winspot_core::{ActionKind, SearchResultKind};
 use winspot_search::providers::{
-    BuiltinCommandProvider, CalculatorProvider, DynamicSearchProvider, FileSystemProvider,
-    RunningProcessProvider, StartMenuAppProvider, UnitConversionProvider, WindowsSettingsProvider,
+    BrowserHistoryProvider, BuiltInPluginProvider, BuiltinCommandProvider, CalculatorProvider,
+    DynamicSearchProvider, FileSystemProvider, RunningProcessProvider, StartMenuAppProvider,
+    UnitConversionProvider, WindowsSettingsProvider,
 };
 
 #[test]
@@ -145,4 +146,26 @@ fn unit_conversion_provider_ignores_mismatched_dimensions() {
     let results = UnitConversionProvider.search("10 kg to mi");
 
     assert!(results.is_empty());
+}
+
+#[test]
+fn browser_history_provider_reads_opt_in_tab_separated_export() {
+    let path = std::env::temp_dir().join(format!("winspot-history-{}.tsv", std::process::id()));
+    fs::write(&path, "Rust Docs\thttps://doc.rust-lang.org\n").expect("write history file");
+
+    let results = BrowserHistoryProvider::new(vec![path.clone()]).collect_results();
+
+    assert_eq!(results[0].title, "Rust Docs");
+    assert_eq!(results[0].kind, SearchResultKind::BrowserHistory);
+
+    fs::remove_file(path).expect("cleanup history");
+}
+
+#[test]
+fn built_in_plugin_provider_exposes_internal_plugins() {
+    let results = BuiltInPluginProvider.search("clipboard");
+
+    assert_eq!(results[0].title, "Clipboard");
+    assert_eq!(results[0].kind, SearchResultKind::Plugin);
+    assert_eq!(results[0].primary_action, ActionKind::PluginCommand);
 }

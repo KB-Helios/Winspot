@@ -8,3 +8,5 @@ license.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 winspot-core.workspace = true
+winspot-index.workspace = true
+winspot-plugins.workspace = true

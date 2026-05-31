@@ -1,6 +1,7 @@
 use winspot_core::{
-    ActionKind, ActionRequested, IpcEnvelope, IpcPayload, PreviewRequested, SearchResult,
-    SearchResultKind, SearchStarted,
+    ActionKind, ActionRequested, CancelRequest, Hello, HelloAccepted, IpcEnvelope, IpcPayload,
+    MAX_JSON_LINE_BYTES, MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PreviewChunk,
+    PreviewRequested, SearchCompleted, SearchResult, SearchResultKind, SearchStarted,
 };
 
 #[test]
@@ -23,6 +24,86 @@ fn search_request_round_trips_with_protocol_version() {
 }
 
 #[test]
+fn protocol_hello_round_trips_negotiation_limits() {
+    let envelope = IpcEnvelope::request(
+        "hello-1",
+        IpcPayload::Hello(Hello {
+            min_protocol_version: MIN_PROTOCOL_VERSION,
+            max_protocol_version: MAX_PROTOCOL_VERSION,
+            client_name: "Winspot.App.Tests".to_string(),
+        }),
+    );
+
+    let json = serde_json::to_string(&envelope).expect("serialize hello");
+    assert!(json.contains("\"type\":\"Hello\""));
+
+    let accepted = IpcEnvelope::request(
+        "hello-1",
+        IpcPayload::HelloAccepted(HelloAccepted {
+            protocol_version: MAX_PROTOCOL_VERSION,
+            max_json_line_bytes: MAX_JSON_LINE_BYTES,
+            server_name: "winspot-daemon".to_string(),
+        }),
+    );
+    let decoded: IpcEnvelope =
+        serde_json::from_str(&serde_json::to_string(&accepted).unwrap()).unwrap();
+    match decoded.payload {
+        IpcPayload::HelloAccepted(hello) => {
+            assert_eq!(hello.protocol_version, MAX_PROTOCOL_VERSION);
+            assert_eq!(hello.max_json_line_bytes, MAX_JSON_LINE_BYTES);
+        }
+        other => panic!("expected HelloAccepted, got {other:?}"),
+    }
+}
+
+#[test]
+fn cancellation_and_stream_completion_round_trip() {
+    let cancel = IpcEnvelope::request(
+        "cancel-1",
+        IpcPayload::CancelRequest(CancelRequest {
+            request_to_cancel: "query-1".to_string(),
+        }),
+    );
+    let completed = IpcEnvelope::request(
+        "query-1",
+        IpcPayload::SearchCompleted(SearchCompleted {
+            query_id: "query-1".to_string(),
+            cancelled: true,
+        }),
+    );
+
+    let cancel_json = serde_json::to_string(&cancel).expect("serialize cancel");
+    let completed_json = serde_json::to_string(&completed).expect("serialize completed");
+
+    assert!(cancel_json.contains("\"type\":\"CancelRequest\""));
+    assert!(completed_json.contains("\"cancelled\":true"));
+}
+
+#[test]
+fn preview_chunk_round_trips_incremental_payload() {
+    let envelope = IpcEnvelope::request(
+        "preview-1",
+        IpcPayload::PreviewChunk(PreviewChunk {
+            preview_id: "preview-1".to_string(),
+            title: "Roadmap.md".to_string(),
+            body: "Loading text preview".to_string(),
+            is_final: false,
+        }),
+    );
+
+    let json = serde_json::to_string(&envelope).expect("serialize preview chunk");
+    let decoded: IpcEnvelope = serde_json::from_str(&json).expect("deserialize preview chunk");
+
+    match decoded.payload {
+        IpcPayload::PreviewChunk(chunk) => {
+            assert_eq!(chunk.preview_id, "preview-1");
+            assert!(!chunk.is_final);
+        }
+        other => panic!("expected PreviewChunk, got {other:?}"),
+    }
+}
+
+#[test]
 fn search_result_serializes_action_metadata() {
     let result = SearchResult {
         id: "app:notepad".to_string(),
@@ -31,6 +112,7 @@ fn search_result_serializes_action_metadata() {
         kind: SearchResultKind::App,
         score: 98.5,
         primary_action: ActionKind::Open,
+        ..SearchResult::default()
     };
 
     let json = serde_json::to_string(&result).expect("serialize result");
@@ -73,6 +155,7 @@ fn preview_request_round_trips_selected_result_metadata() {
         kind: SearchResultKind::File,
         score: 42.0,
         primary_action: ActionKind::Open,
+        ..SearchResult::default()
     };
     let envelope = IpcEnvelope::request(
         "preview-1",

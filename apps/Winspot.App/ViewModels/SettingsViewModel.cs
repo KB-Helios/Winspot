@@ -131,6 +131,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return true;
     }
 
+    public void SetHotkeyRegistrationStatus(bool registered)
+    {
+        StatusMessage = registered
+            ? "Saved. Hotkey is ready."
+            : "Saved, but that hotkey is unavailable. The previous hotkey is still active.";
+    }
+
     private void LoadFrom(LauncherSettings settings)
     {
         var modifiers = settings.Hotkey.Modifiers

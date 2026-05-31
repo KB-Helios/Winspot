@@ -19,6 +19,9 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private SearchResultItem? _selectedResult;
     private string _statusText = "Start typing to search";
     private string _hotkeyHint;
+    private string _hotkeyStatusText = "Hotkey not registered yet";
+    private IReadOnlyList<ActionItem> _selectedActions = Array.Empty<ActionItem>();
+    private int _focusedActionIndex = -1;
 
     public LauncherViewModel(IWinspotIpcClient ipcClient, HotkeyBinding? hotkey = null)
     {
@@ -38,10 +41,23 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         private set => SetField(ref _hotkeyHint, value);
     }
 
+    public string HotkeyStatusText
+    {
+        get => _hotkeyStatusText;
+        private set => SetField(ref _hotkeyStatusText, value);
+    }
+
     /// Refreshes the displayed chord after the user changes the hotkey in settings.
     public void UpdateHotkeyHint(HotkeyBinding hotkey)
     {
         HotkeyHint = hotkey.ToDisplayString();
+    }
+
+    public void UpdateHotkeyRegistrationStatus(bool registered)
+    {
+        HotkeyStatusText = registered
+            ? $"Hotkey ready: {HotkeyHint}"
+            : $"Hotkey unavailable: {HotkeyHint}";
     }
 
     public bool IsExpanded => !string.IsNullOrWhiteSpace(Query);
@@ -66,9 +82,23 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             if (SetField(ref _selectedResult, value))
             {
+                SelectedActions = value?.DisplayActions ?? Array.Empty<ActionItem>();
+                FocusedActionIndex = SelectedActions.Count > 0 ? 0 : -1;
                 _ = RefreshPreviewAsync(value);
             }
         }
+    }
+
+    public IReadOnlyList<ActionItem> SelectedActions
+    {
+        get => _selectedActions;
+        private set => SetField(ref _selectedActions, value);
+    }
+
+    public int FocusedActionIndex
+    {
+        get => _focusedActionIndex;
+        private set => SetField(ref _focusedActionIndex, value);
     }
 
     public string PreviewBody
@@ -89,12 +119,14 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         private set => SetField(ref _statusText, value);
     }
 
-    public async Task ExecuteSelectedAsync()
+    public Task ExecuteSelectedAsync() => AcceptSelectionAsync();
+
+    public async Task<bool> AcceptSelectionAsync()
     {
         if (SelectedResult is null)
         {
             StatusText = "No result selected";
-            return;
+            return false;
         }
 
         _actionCancellation?.Cancel();
@@ -108,6 +140,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
             if (!cancellationToken.IsCancellationRequested)
             {
                 StatusText = message;
+                return true;
             }
         }
         catch (OperationCanceledException)
@@ -117,6 +150,43 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             StatusText = $"Action failed: {ex.Message}";
         }
+
+        return false;
+    }
+
+    public void MoveSelectionDown()
+    {
+        MoveSelection(1);
+    }
+
+    public void MoveSelectionUp()
+    {
+        MoveSelection(-1);
+    }
+
+    public void FocusActions()
+    {
+        FocusedActionIndex = SelectedActions.Count > 0 ? 0 : -1;
+    }
+
+    public void FocusResults()
+    {
+        FocusedActionIndex = -1;
+    }
+
+    private void MoveSelection(int delta)
+    {
+        if (Results.Count == 0)
+        {
+            SelectedResult = null;
+            return;
+        }
+
+        var currentIndex = SelectedResult is null ? -1 : Results.IndexOf(SelectedResult);
+        var next = currentIndex < 0
+            ? 0
+            : Math.Clamp(currentIndex + delta, 0, Results.Count - 1);
+        SelectedResult = Results[next];
     }
 
     private async Task RefreshAsync(string query)
@@ -139,20 +209,25 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
             await Task.Delay(60, cancellationToken);
             StatusText = "Searching";
 
-            var results = await _ipcClient.SearchAsync(query, cancellationToken);
-            if (cancellationToken.IsCancellationRequested)
+            await foreach (var results in _ipcClient.StreamSearchAsync(query, cancellationToken))
             {
-                return;
-            }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
 
-            Results.Clear();
-            foreach (var result in results)
-            {
-                Results.Add(result);
-            }
+                var selectedId = SelectedResult?.Id;
+                Results.Clear();
+                foreach (var result in results)
+                {
+                    Results.Add(result);
+                }
 
-            SelectedResult = Results.FirstOrDefault();
-            StatusText = Results.Count == 0 ? "No results" : $"{Results.Count} result(s)";
+                SelectedResult = selectedId is null
+                    ? Results.FirstOrDefault()
+                    : Results.FirstOrDefault(result => result.Id == selectedId) ?? Results.FirstOrDefault();
+                StatusText = Results.Count == 0 ? "No results" : $"{Results.Count} result(s)";
+            }
         }
         catch (OperationCanceledException)
         {

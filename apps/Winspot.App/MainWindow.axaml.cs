@@ -55,8 +55,9 @@ public sealed partial class MainWindow : Window
 
     /// Re-registers the global hotkey and refreshes the hint after the user
     /// changes the activation chord in settings.
-    public void ApplyHotkey(HotkeyBinding hotkey)
+    public bool ApplyHotkey(HotkeyBinding hotkey)
     {
+        var previousHotkey = _hotkey;
         _hotkey = hotkey;
         ViewModel.UpdateHotkeyHint(hotkey);
 
@@ -67,7 +68,15 @@ public sealed partial class MainWindow : Window
             _hotkeyService = null;
         }
 
+        if (RegisterHotkey())
+        {
+            return true;
+        }
+
+        _hotkey = previousHotkey;
+        ViewModel.UpdateHotkeyHint(previousHotkey);
         RegisterHotkey();
+        return false;
     }
 
     public void FocusSearch()
@@ -125,13 +134,44 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (e.Key == Key.Down)
+        {
+            ViewModel.MoveSelectionDown();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Up)
+        {
+            ViewModel.MoveSelectionUp();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key is Key.Tab or Key.Right)
+        {
+            ViewModel.FocusActions();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Left)
+        {
+            ViewModel.FocusResults();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != Key.Enter)
         {
             return;
         }
 
         e.Handled = true;
-        await ViewModel.ExecuteSelectedAsync();
+        if (await ViewModel.AcceptSelectionAsync())
+        {
+            Hide();
+        }
     }
 
     private void OnGlobalHotkeyPressed(object? sender, EventArgs e)
@@ -258,17 +298,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void RegisterHotkey()
+    private bool RegisterHotkey()
     {
         if (_hotkeyService is not null)
         {
-            return;
+            ViewModel.UpdateHotkeyRegistrationStatus(true);
+            return true;
         }
 
         var handle = GetWindowHandle();
         if (handle == 0)
         {
-            return;
+            ViewModel.UpdateHotkeyRegistrationStatus(false);
+            return false;
         }
 
         var hotkeyService = new GlobalHotkeyService(handle);
@@ -276,11 +318,14 @@ public sealed partial class MainWindow : Window
         if (hotkeyService.Register(_hotkey))
         {
             _hotkeyService = hotkeyService;
-            return;
+            ViewModel.UpdateHotkeyRegistrationStatus(true);
+            return true;
         }
 
         hotkeyService.Pressed -= OnGlobalHotkeyPressed;
         hotkeyService.Dispose();
+        ViewModel.UpdateHotkeyRegistrationStatus(false);
+        return false;
     }
 
     private nint GetWindowHandle()

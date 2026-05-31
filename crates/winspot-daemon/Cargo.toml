@@ -8,7 +8,9 @@ license.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+winspot-actions.workspace = true
 winspot-core.workspace = true
+winspot-preview.workspace = true
 winspot-search.workspace = true
 
 [target.'cfg(windows)'.dependencies]

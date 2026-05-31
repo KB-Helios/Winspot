@@ -1,26 +1,27 @@
 use std::{
     env,
     path::PathBuf,
-    process::Command,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Context;
-use clipboard_win::set_clipboard_string;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::windows::named_pipe::{NamedPipeServer, ServerOptions},
 };
+use winspot_actions::{ActionExecutor, ActionPolicy};
 use winspot_core::{
-    ActionCompleted, ActionKind, ActionRequested, IpcEnvelope, IpcPayload, PreviewReady,
-    PreviewRequested, ResultBatch, SearchResult,
+    BackendError, HelloAccepted, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
+    MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PreviewChunk, PreviewReady, PreviewRequested,
+    ResultBatch, SearchCompleted,
 };
+use winspot_preview::{DefaultPreviewProvider, PreviewProvider};
 use winspot_search::{
     engine::SearchEngine,
     providers::{
-        BuiltinCommandProvider, CalculatorProvider, FileSystemProvider, RefreshableProvider,
-        RunningProcessProvider, StartMenuAppProvider, UnitConversionProvider,
+        BuiltInPluginProvider, BuiltinCommandProvider, CalculatorProvider, FileSystemProvider,
+        RefreshableProvider, RunningProcessProvider, StartMenuAppProvider, UnitConversionProvider,
         WindowsSettingsProvider,
     },
     usage::{UsageEvent, UsageSnapshot, UsageStore},
@@ -98,7 +99,8 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
         Arc::new(current_unix_seconds),
     )
     .with_dynamic_provider(Arc::new(CalculatorProvider))
-    .with_dynamic_provider(Arc::new(UnitConversionProvider)))
+    .with_dynamic_provider(Arc::new(UnitConversionProvider))
+    .with_dynamic_provider(Arc::new(BuiltInPluginProvider)))
 }
 
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
@@ -121,21 +123,33 @@ async fn serve_connection(
 
     let mut reader = BufReader::new(server);
     let mut line = String::new();
-    reader.read_line(&mut line).await.context("read IPC line")?;
+    while reader.read_line(&mut line).await.context("read IPC line")? > 0 {
+        if line.len() > MAX_JSON_LINE_BYTES {
+            write_envelope(
+                reader.get_mut(),
+                &IpcEnvelope::request(
+                    "oversized-payload",
+                    IpcPayload::Error(BackendError {
+                        code: "payload_too_large".to_string(),
+                        message: format!("IPC payload exceeds {MAX_JSON_LINE_BYTES} bytes"),
+                        retryable: false,
+                    }),
+                ),
+            )
+            .await?;
+            line.clear();
+            break;
+        }
 
-    let response = handle_line(line.trim(), engine, config)?;
-    let mut response_json = serde_json::to_string(&response).context("serialize response")?;
-    response_json.push('\n');
-    reader
-        .get_mut()
-        .write_all(response_json.as_bytes())
-        .await
-        .context("write IPC response")?;
-    reader
-        .get_mut()
-        .flush()
-        .await
-        .context("flush IPC response")?;
+        let (responses, close_after) = handle_line(line.trim(), engine, config)?;
+        for response in responses {
+            write_envelope(reader.get_mut(), &response).await?;
+        }
+        line.clear();
+        if close_after {
+            break;
+        }
+    }
 
     Ok(())
 }
@@ -144,76 +158,156 @@ fn handle_line(
     line: &str,
     engine: &SearchEngine,
     config: &PipeConfig,
-) -> anyhow::Result<IpcEnvelope> {
+) -> anyhow::Result<(Vec<IpcEnvelope>, bool)> {
     let envelope: IpcEnvelope = serde_json::from_str(line).context("decode IPC envelope")?;
     let request_id = envelope.request_id.clone();
 
     match envelope.payload {
+        IpcPayload::Hello(hello) => {
+            let version = hello
+                .max_protocol_version
+                .min(MAX_PROTOCOL_VERSION)
+                .max(MIN_PROTOCOL_VERSION);
+            Ok((
+                vec![IpcEnvelope::request(
+                    request_id,
+                    IpcPayload::HelloAccepted(HelloAccepted {
+                        protocol_version: version,
+                        max_json_line_bytes: MAX_JSON_LINE_BYTES,
+                        server_name: "winspot-daemon".to_string(),
+                    }),
+                )],
+                false,
+            ))
+        }
         IpcPayload::SearchStarted(search) => {
-            let batch = ResultBatch {
-                query_id: search.query_id,
-                is_final: true,
-                results: engine.search(&search.text, 20),
+            let results = engine.search(&search.text, 20);
+            let first_batch = ResultBatch {
+                query_id: search.query_id.clone(),
+                is_final: false,
+                batch_index: 0,
+                results: results.iter().take(5).cloned().collect(),
             };
-            Ok(IpcEnvelope::request(
-                request_id,
-                IpcPayload::ResultBatch(batch),
+            let final_batch = ResultBatch {
+                query_id: first_batch.query_id.clone(),
+                is_final: true,
+                batch_index: 1,
+                results,
+            };
+            Ok((
+                vec![
+                    IpcEnvelope::request(request_id.clone(), IpcPayload::ResultBatch(first_batch)),
+                    IpcEnvelope::request(request_id.clone(), IpcPayload::ResultBatch(final_batch)),
+                    IpcEnvelope::request(
+                        request_id,
+                        IpcPayload::SearchCompleted(SearchCompleted {
+                            query_id: search.query_id,
+                            cancelled: false,
+                        }),
+                    ),
+                ],
+                true,
             ))
         }
         IpcPayload::ActionRequested(action) => {
             let completed = handle_action(action, engine, config);
-            Ok(IpcEnvelope::request(
-                request_id,
-                IpcPayload::ActionCompleted(completed),
+            Ok((
+                vec![IpcEnvelope::request(
+                    request_id,
+                    IpcPayload::ActionCompleted(completed),
+                )],
+                true,
             ))
         }
-        IpcPayload::PreviewRequested(preview) => Ok(IpcEnvelope::request(
-            request_id,
-            IpcPayload::PreviewReady(build_preview(preview)),
+        IpcPayload::PreviewRequested(preview) => {
+            let chunk = build_preview_chunk(&preview);
+            let ready = build_preview(preview);
+            Ok((
+                vec![
+                    IpcEnvelope::request(request_id.clone(), IpcPayload::PreviewChunk(chunk)),
+                    IpcEnvelope::request(request_id, IpcPayload::PreviewReady(ready)),
+                ],
+                true,
+            ))
+        }
+        IpcPayload::CancelRequest(cancel) => Ok((
+            vec![IpcEnvelope::request(
+                request_id,
+                IpcPayload::SearchCompleted(SearchCompleted {
+                    query_id: cancel.request_to_cancel,
+                    cancelled: true,
+                }),
+            )],
+            true,
         )),
-        _ => Ok(IpcEnvelope::request(
-            request_id,
-            IpcPayload::Error(winspot_core::ipc::IpcError {
-                code: "unsupported_payload".to_string(),
-                message: "Only SearchStarted is supported in the first spine.".to_string(),
-            }),
+        _ => Ok((
+            vec![IpcEnvelope::request(
+                request_id,
+                IpcPayload::Error(BackendError {
+                    code: "unsupported_payload".to_string(),
+                    message: "Unsupported IPC payload for this daemon.".to_string(),
+                    retryable: false,
+                }),
+            )],
+            true,
         )),
+    }
+}
+
+async fn write_envelope(
+    server: &mut NamedPipeServer,
+    envelope: &IpcEnvelope,
+) -> anyhow::Result<()> {
+    let mut response_json = serde_json::to_string(envelope).context("serialize response")?;
+    response_json.push('\n');
+    server
+        .write_all(response_json.as_bytes())
+        .await
+        .context("write IPC response")?;
+    server.flush().await.context("flush IPC response")?;
+    Ok(())
+}
+
+fn build_preview_chunk(preview: &PreviewRequested) -> PreviewChunk {
+    PreviewChunk {
+        preview_id: preview.preview_id.clone(),
+        title: preview.result.title.clone(),
+        body: "Loading preview".to_string(),
+        is_final: false,
     }
 }
 
 fn build_preview(preview: PreviewRequested) -> PreviewReady {
+    let payload = DefaultPreviewProvider.preview(&preview.result);
     PreviewReady {
         preview_id: preview.preview_id,
-        title: preview.result.title.clone(),
-        body: metadata_preview_body(&preview.result),
+        title: payload.title().to_string(),
+        body: payload.body().to_string(),
         is_final: true,
     }
 }
 
-fn metadata_preview_body(result: &SearchResult) -> String {
-    format!(
-        "Kind: {:?}\nPrimary action: {:?}\nLocation: {}\nScore: {:.1}",
-        result.kind, result.primary_action, result.subtitle, result.score
-    )
-}
-
 fn handle_action(
-    action: ActionRequested,
+    action: winspot_core::ActionRequested,
     engine: &SearchEngine,
     config: &PipeConfig,
-) -> ActionCompleted {
+) -> winspot_core::ActionCompleted {
     let now = current_unix_seconds();
-    match execute_action(&action).and_then(|message| {
-        record_usage(&action, now, config)?;
+    let completed = ActionExecutor::new(ActionPolicy::allow_all_local()).execute(action.clone());
+    if !completed.succeeded {
+        return completed;
+    }
+
+    match record_usage(&action, now, config).map(|_| {
         engine.record_usage(&action.result_id, now);
-        Ok(message)
+        completed.message.clone()
     }) {
-        Ok(message) => ActionCompleted {
+        Ok(message) => winspot_core::ActionCompleted {
             action_id: action.action_id,
             succeeded: true,
             message,
         },
-        Err(error) => ActionCompleted {
+        Err(error) => winspot_core::ActionCompleted {
             action_id: action.action_id,
             succeeded: false,
             message: error.to_string(),
@@ -221,58 +315,8 @@ fn handle_action(
     }
 }
 
-fn execute_action(action: &ActionRequested) -> anyhow::Result<String> {
-    match action.primary_action {
-        ActionKind::Copy => copy_action(action),
-        ActionKind::RunCommand => run_command_action(action),
-        ActionKind::Open => open_action(action),
-    }
-}
-
-fn copy_action(action: &ActionRequested) -> anyhow::Result<String> {
-    let value = clipboard_value(&action.title);
-    set_clipboard_string(value)
-        .map_err(|error| anyhow::anyhow!("copy {} to clipboard: {error}", action.title))?;
-    Ok(format!("Copied {value}"))
-}
-
-/// Calculator and unit-conversion results format their title as
-/// `"<input> = <value>"`, so the value the user wants is the part after the
-/// last `" = "`. Other copyable results (e.g. process names) copy the title.
-fn clipboard_value(title: &str) -> &str {
-    match title.rsplit_once(" = ") {
-        Some((_, value)) => value.trim(),
-        None => title.trim(),
-    }
-}
-
-fn run_command_action(action: &ActionRequested) -> anyhow::Result<String> {
-    let command = match action.result_id.as_str() {
-        "command:calculator" => "calc.exe",
-        "command:terminal" => "wt.exe",
-        other => anyhow::bail!("Unsupported command action {other}"),
-    };
-
-    Command::new(command)
-        .spawn()
-        .with_context(|| format!("run {}", action.title))?;
-    Ok(format!("Launched {}", action.title))
-}
-
-fn open_action(action: &ActionRequested) -> anyhow::Result<String> {
-    let Some((_, target)) = action.result_id.split_once(':') else {
-        anyhow::bail!("Action target is missing");
-    };
-
-    Command::new("explorer")
-        .arg(target)
-        .spawn()
-        .with_context(|| format!("open {}", action.title))?;
-    Ok(format!("Opened {}", action.title))
-}
-
 fn record_usage(
-    action: &ActionRequested,
+    action: &winspot_core::ActionRequested,
     now_unix_seconds: u64,
     config: &PipeConfig,
 ) -> anyhow::Result<()> {
@@ -299,6 +343,14 @@ fn default_search_providers() -> Vec<Arc<dyn RefreshableProvider>> {
 }
 
 fn default_usage_log_path() -> Option<PathBuf> {
+    if let Ok(executable) = env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            if directory.join("Winspot.portable").exists() {
+                return Some(directory.join("data").join("usage-events.jsonl"));
+            }
+        }
+    }
+
     env::var("LOCALAPPDATA")
         .ok()
         .map(|local_app_data| PathBuf::from(local_app_data).join("Winspot\\usage-events.jsonl"))
