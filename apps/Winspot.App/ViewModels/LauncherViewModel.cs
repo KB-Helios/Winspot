@@ -19,14 +19,19 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private SearchResultItem? _selectedResult;
     private string _statusText = "Start typing to search";
 
-    public LauncherViewModel(IWinspotIpcClient ipcClient)
+    public LauncherViewModel(IWinspotIpcClient ipcClient, HotkeyBinding? hotkey = null)
     {
         _ipcClient = ipcClient;
+        HotkeyHint = (hotkey ?? new HotkeyBinding()).ToDisplayString();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<SearchResultItem> Results { get; } = new();
+
+    /// The configured activation chord (e.g. "Ctrl Alt Space"), shown in the
+    /// search box hint so it always reflects the user's actual hotkey.
+    public string HotkeyHint { get; }
 
     public bool IsExpanded => !string.IsNullOrWhiteSpace(Query);
 

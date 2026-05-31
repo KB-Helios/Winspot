@@ -10,6 +10,22 @@ pub trait SearchProvider {
     fn collect_results(&self) -> Vec<SearchResult>;
 }
 
+/// A thread-safe provider whose static candidates can be re-collected on demand
+/// (e.g. on a freshness TTL) by a long-lived `SearchEngine`. Any `SearchProvider`
+/// that is `Send + Sync` satisfies this automatically via the blanket impl below.
+pub trait RefreshableProvider: Send + Sync {
+    fn collect_results(&self) -> Vec<SearchResult>;
+}
+
+impl<T> RefreshableProvider for T
+where
+    T: SearchProvider + Send + Sync,
+{
+    fn collect_results(&self) -> Vec<SearchResult> {
+        SearchProvider::collect_results(self)
+    }
+}
+
 pub trait DynamicSearchProvider: Send + Sync {
     fn search(&self, query: &str) -> Vec<SearchResult>;
 }
@@ -91,7 +107,13 @@ const UNIT_DEFINITIONS: &[UnitDefinition] = &[
         scale: UnitScale::Linear { to_base: 1000.0 },
     },
     UnitDefinition {
-        aliases: &["cm", "centimeter", "centimeters", "centimetre", "centimetres"],
+        aliases: &[
+            "cm",
+            "centimeter",
+            "centimeters",
+            "centimetre",
+            "centimetres",
+        ],
         symbol: "cm",
         dimension: UnitDimension::Length,
         scale: UnitScale::Linear { to_base: 0.01 },
@@ -336,7 +358,10 @@ impl SearchProvider for RunningProcessProvider {
             return Vec::new();
         }
 
-        let Ok(output) = Command::new("tasklist").args(["/FO", "CSV", "/NH"]).output() else {
+        let Ok(output) = Command::new("tasklist")
+            .args(["/FO", "CSV", "/NH"])
+            .output()
+        else {
             return Vec::new();
         };
 
@@ -762,10 +787,7 @@ fn collect_file_system_entries(
 }
 
 fn parse_tasklist_csv(output: &str) -> Vec<SearchResult> {
-    output
-        .lines()
-        .filter_map(parse_process_line)
-        .collect()
+    output.lines().filter_map(parse_process_line).collect()
 }
 
 fn parse_process_line(line: &str) -> Option<SearchResult> {

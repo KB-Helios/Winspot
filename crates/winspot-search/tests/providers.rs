@@ -8,7 +8,7 @@ use winspot_search::providers::{
 
 #[test]
 fn builtin_command_provider_exposes_calculator_and_terminal() {
-    let results = BuiltinCommandProvider::default().collect_results();
+    let results = BuiltinCommandProvider.collect_results();
 
     assert!(results.iter().any(|result| result.title == "Calculator"));
     assert!(results.iter().any(|result| result.title == "Terminal"));
@@ -71,7 +71,7 @@ fn file_system_provider_respects_entry_limit() {
 
 #[test]
 fn windows_settings_provider_exposes_common_settings_pages() {
-    let results = WindowsSettingsProvider::default().collect_results();
+    let results = WindowsSettingsProvider.collect_results();
 
     assert!(results.iter().any(|result| {
         result.title == "Display settings"
@@ -79,7 +79,11 @@ fn windows_settings_provider_exposes_common_settings_pages() {
             && result.kind == SearchResultKind::Setting
             && result.primary_action == ActionKind::Open
     }));
-    assert!(results.iter().any(|result| result.title == "Windows Update"));
+    assert!(
+        results
+            .iter()
+            .any(|result| result.title == "Windows Update")
+    );
 }
 
 #[test]
@@ -96,12 +100,16 @@ fn running_process_provider_parses_tasklist_csv() {
             && result.kind == SearchResultKind::Process
             && result.primary_action == ActionKind::Copy
     }));
-    assert!(results.iter().any(|result| result.title == "Winspot.App.exe"));
+    assert!(
+        results
+            .iter()
+            .any(|result| result.title == "Winspot.App.exe")
+    );
 }
 
 #[test]
 fn calculator_provider_returns_result_for_arithmetic_expression() {
-    let results = CalculatorProvider::default().search("2 + 3 * 4");
+    let results = CalculatorProvider.search("2 + 3 * 4");
 
     assert_eq!(results[0].title, "2 + 3 * 4 = 14");
     assert_eq!(results[0].subtitle, "Calculator result");
@@ -110,14 +118,14 @@ fn calculator_provider_returns_result_for_arithmetic_expression() {
 
 #[test]
 fn calculator_provider_ignores_non_math_queries() {
-    let results = CalculatorProvider::default().search("notepad");
+    let results = CalculatorProvider.search("notepad");
 
     assert!(results.is_empty());
 }
 
 #[test]
 fn unit_conversion_provider_converts_length_units() {
-    let results = UnitConversionProvider::default().search("10 km to mi");
+    let results = UnitConversionProvider.search("10 km to mi");
 
     assert_eq!(results[0].title, "10 km to mi = 6.213712 mi");
     assert_eq!(results[0].subtitle, "Unit conversion");
@@ -127,14 +135,14 @@ fn unit_conversion_provider_converts_length_units() {
 
 #[test]
 fn unit_conversion_provider_converts_temperature_units() {
-    let results = UnitConversionProvider::default().search("32 f to c");
+    let results = UnitConversionProvider.search("32 f to c");
 
     assert_eq!(results[0].title, "32 F to C = 0 C");
 }
 
 #[test]
 fn unit_conversion_provider_ignores_mismatched_dimensions() {
-    let results = UnitConversionProvider::default().search("10 kg to mi");
+    let results = UnitConversionProvider.search("10 kg to mi");
 
     assert!(results.is_empty());
 }

@@ -2,11 +2,13 @@
     x:Class="Winspot_App.App"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="using:Winspot_App.Converters"
     RequestedThemeVariant="Dark">
     <Application.Styles>
         <SimpleTheme />
     </Application.Styles>
     <Application.Resources>
+        <conv:IconPathToBitmapConverter x:Key="IconPathToBitmap" />
         <Color x:Key="SystemAccentColor">#72F1D6</Color>
         <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#72F1D6" />
         <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#3BBEA4" />

@@ -103,7 +103,7 @@
                             VerticalAlignment="Center"
                             FontSize="11"
                             Foreground="#FF8792A3"
-                            Text="Ctrl Alt Space" />
+                            Text="{Binding HotkeyHint}" />
                     </Grid>
                 </Border>
 
@@ -143,13 +143,21 @@
                                             VerticalAlignment="Center"
                                             Background="#FF202938"
                                             CornerRadius="9">
-                                            <TextBlock
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                FontSize="16"
-                                                Foreground="#FFCBD5E1"
-                                                Text="{Binding IconGlyph}" />
+                                            <Panel>
+                                                <TextBlock
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                    FontSize="16"
+                                                    Foreground="#FFCBD5E1"
+                                                    Text="{Binding IconGlyph}" />
+                                                <Image
+                                                    Width="22"
+                                                    Height="22"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Source="{Binding IconPath, Converter={StaticResource IconPathToBitmap}}" />
+                                            </Panel>
                                         </Border>
 
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">

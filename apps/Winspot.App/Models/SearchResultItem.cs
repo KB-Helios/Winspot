@@ -22,7 +22,19 @@ public sealed record SearchResultItem(
 
     public string IconLabel => $"{Kind} result";
 
-    public string? IconPath => Kind == "App" && Id.StartsWith("app:", StringComparison.Ordinal)
-        ? Id["app:".Length..]
-        : null;
+    /// File-system path for kinds whose result id encodes one (apps, files,
+    /// folders), used to fetch the real shell icon. Other kinds fall back to the
+    /// font glyph above.
+    public string? IconPath => Kind switch
+    {
+        "App" => StripIdPrefix("app:"),
+        "File" => StripIdPrefix("file:"),
+        "Folder" => StripIdPrefix("folder:"),
+        _ => null,
+    };
+
+    public bool HasIcon => IconPath is not null;
+
+    private string? StripIdPrefix(string prefix) =>
+        Id.StartsWith(prefix, StringComparison.Ordinal) ? Id[prefix.Length..] : null;
 }
