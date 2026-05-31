@@ -1,13 +1,25 @@
+using System;
+
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
 
+using Winspot_App.Models;
 using Winspot_App.Services;
+using Winspot_App.ViewModels;
 
 namespace Winspot_App;
 
 public sealed partial class App : Application
 {
+    private readonly LauncherSettingsStore _settingsStore = new();
+    private IClassicDesktopStyleApplicationLifetime? _desktop;
+    private MainWindow? _mainWindow;
+    private SettingsWindow? _settingsWindow;
+    private TrayIcon? _trayIcon;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -17,11 +29,99 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow();
+            _desktop = desktop;
+            var settings = _settingsStore.Load();
+
+            _mainWindow = new MainWindow(settings);
+            desktop.MainWindow = _mainWindow;
             desktop.ShutdownRequested += (_, _) => WinspotIpcClient.StopBackendIfOwned();
-            desktop.Exit += (_, _) => WinspotIpcClient.StopBackendIfOwned();
+            desktop.Exit += (_, _) =>
+            {
+                _trayIcon?.Dispose();
+                WinspotIpcClient.StopBackendIfOwned();
+            };
+
+            InitializeTrayIcon();
+            UpdateTrayVisibility(settings.ShowTrayIcon);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void InitializeTrayIcon()
+    {
+        var openItem = new NativeMenuItem("Open Winspot");
+        openItem.Click += (_, _) => ShowLauncher();
+
+        var settingsItem = new NativeMenuItem("Settings\u2026");
+        settingsItem.Click += (_, _) => ShowSettings();
+
+        var quitItem = new NativeMenuItem("Quit Winspot");
+        quitItem.Click += (_, _) => _desktop?.Shutdown();
+
+        var menu = new NativeMenu();
+        menu.Add(openItem);
+        menu.Add(settingsItem);
+        menu.Add(new NativeMenuItemSeparator());
+        menu.Add(quitItem);
+
+        _trayIcon = new TrayIcon
+        {
+            ToolTipText = "Winspot",
+            Menu = menu,
+            Icon = LoadTrayIcon(),
+        };
+        _trayIcon.Clicked += (_, _) => ShowLauncher();
+
+        TrayIcon.SetIcons(this, new TrayIcons { _trayIcon });
+    }
+
+    private void ShowLauncher()
+    {
+        _mainWindow?.ShowLauncher();
+    }
+
+    private void ShowSettings()
+    {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        var viewModel = new SettingsViewModel(_settingsStore);
+        viewModel.Saved += OnSettingsSaved;
+
+        var window = new SettingsWindow(viewModel);
+        window.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow = window;
+        window.Show();
+        window.Activate();
+    }
+
+    private void OnSettingsSaved(object? sender, LauncherSettings settings)
+    {
+        _mainWindow?.ApplyHotkey(settings.Hotkey);
+        UpdateTrayVisibility(settings.ShowTrayIcon);
+    }
+
+    private void UpdateTrayVisibility(bool isVisible)
+    {
+        if (_trayIcon is not null)
+        {
+            _trayIcon.IsVisible = isVisible;
+        }
+    }
+
+    private static WindowIcon? LoadTrayIcon()
+    {
+        try
+        {
+            return new WindowIcon(AssetLoader.Open(new Uri("avares://Winspot.App/Assets/AppIcon.ico")));
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

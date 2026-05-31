@@ -4,7 +4,7 @@ using Winspot_App.Models;
 
 namespace Winspot_App.Services;
 
-internal sealed class LauncherSettingsStore
+public sealed class LauncherSettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,6 +23,8 @@ internal sealed class LauncherSettingsStore
     {
         _settingsPath = settingsPath;
     }
+
+    public string SettingsPath => _settingsPath;
 
     public LauncherSettings Load()
     {
@@ -44,7 +46,7 @@ internal sealed class LauncherSettingsStore
         }
     }
 
-    private void Save(LauncherSettings settings)
+    public void Save(LauncherSettings settings)
     {
         var directory = Path.GetDirectoryName(_settingsPath);
         if (!string.IsNullOrEmpty(directory))
