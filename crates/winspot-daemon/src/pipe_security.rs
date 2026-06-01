@@ -104,7 +104,8 @@ fn current_user_sid_string() -> io::Result<Vec<u16>> {
             return Err(error);
         }
 
-        let mut buffer = vec![0u8; needed as usize];
+        let usize_aligned_size = (needed as usize + mem::size_of::<usize>() - 1) / mem::size_of::<usize>();
+        let mut buffer = vec![0usize; usize_aligned_size];
         let ok = GetTokenInformation(
             token,
             TokenUser,
