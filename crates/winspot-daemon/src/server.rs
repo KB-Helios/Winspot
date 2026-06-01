@@ -182,9 +182,32 @@ fn handle_line(
 
     match envelope.payload {
         IpcPayload::Hello(hello) => {
-            let version = hello
-                .max_protocol_version
-                .clamp(MIN_PROTOCOL_VERSION, MAX_PROTOCOL_VERSION);
+            // Negotiate the highest version both sides support. If the client's
+            // advertised range doesn't overlap ours, refuse instead of silently
+            // "accepting" a version the daemon doesn't actually implement.
+            if hello.max_protocol_version < MIN_PROTOCOL_VERSION
+                || hello.min_protocol_version > MAX_PROTOCOL_VERSION
+            {
+                return Ok((
+                    vec![IpcEnvelope::request(
+                        request_id,
+                        IpcPayload::Error(BackendError {
+                            code: "protocol_unsupported".to_string(),
+                            message: format!(
+                                "client supports protocol {}-{}, daemon supports {}-{}",
+                                hello.min_protocol_version,
+                                hello.max_protocol_version,
+                                MIN_PROTOCOL_VERSION,
+                                MAX_PROTOCOL_VERSION
+                            ),
+                            retryable: false,
+                        }),
+                    )],
+                    true,
+                ));
+            }
+
+            let version = hello.max_protocol_version.min(MAX_PROTOCOL_VERSION);
             Ok((
                 vec![IpcEnvelope::request(
                     request_id,
