@@ -37,6 +37,17 @@
             <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FF06140F" />
             <SolidColorBrush x:Key="CaretBrush" Color="#FFE8EDF7" />
             <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#665F6F84" />
+
+            <!--
+                Tame FluentTheme's default accent focus visuals so the search box
+                keeps the calm graphite look instead of a bright teal ring.
+            -->
+            <SolidColorBrush x:Key="TextControlBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+            <SolidColorBrush x:Key="TextControlBorderBrush" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#40FFFFFF" />
         </ResourceDictionary>
 
         <!-- ============================ LIGHT =========================== -->
