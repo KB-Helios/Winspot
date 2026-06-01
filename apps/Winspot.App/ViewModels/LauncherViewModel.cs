@@ -9,6 +9,12 @@ namespace Winspot_App.ViewModels;
 
 public sealed class LauncherViewModel : INotifyPropertyChanged
 {
+    /// Result id of the built-in "Winspot Settings" command. When this result is
+    /// accepted the launcher opens the settings window locally instead of
+    /// dispatching an action to the daemon. Kept in sync with the Rust
+    /// `WINSPOT_SETTINGS_COMMAND_ID` constant.
+    public const string SettingsCommandId = "command:winspot-settings";
+
     private readonly IWinspotIpcClient _ipcClient;
     private CancellationTokenSource? _queryCancellation;
     private CancellationTokenSource? _actionCancellation;
@@ -31,6 +37,11 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// Raised when the user accepts the "Winspot Settings" command so the host
+    /// (App) can open the settings window. The daemon cannot own UI windows, so
+    /// this result is handled entirely on the UI side.
+    public event EventHandler? SettingsRequested;
 
     public ObservableCollection<SearchResultItem> Results { get; } = new();
 
@@ -135,6 +146,13 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             StatusText = "No result selected";
             return false;
+        }
+
+        if (SelectedResult.Id == SettingsCommandId)
+        {
+            StatusText = "Opening Winspot settings";
+            SettingsRequested?.Invoke(this, EventArgs.Empty);
+            return true;
         }
 
         _actionCancellation?.Cancel();

@@ -2,14 +2,20 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 use winspot_core::{
     ActionCapability, ActionDescriptor, ActionKind, SearchResult, SearchResultKind,
 };
 use winspot_index::IndexStore;
-use winspot_plugins::built_in_plugin_manifests;
+use winspot_plugins::{PluginRegistry, built_in_plugin_manifests};
+
+/// Result id for the built-in command that opens Winspot's own settings window.
+/// The Avalonia UI recognizes this id and opens the settings window locally
+/// instead of dispatching an action to the daemon (the daemon cannot own UI
+/// windows). Kept in sync with `LauncherViewModel.SettingsCommandId`.
+pub const WINSPOT_SETTINGS_COMMAND_ID: &str = "command:winspot-settings";
 
 pub trait SearchProvider {
     fn collect_results(&self) -> Vec<SearchResult>;
@@ -87,6 +93,13 @@ fn plugin_command_action() -> ActionDescriptor {
         ActionKind::PluginCommand,
         vec![ActionCapability::PluginExecution],
     )
+}
+
+/// The footer action shown for the "Winspot Settings" command. It carries no
+/// capabilities because the UI handles it locally (opening the settings window)
+/// rather than executing it through the daemon's capability-gated executor.
+fn open_settings_action() -> ActionDescriptor {
+    action_descriptor("open-settings", "Open", ActionKind::Open, Vec::new())
 }
 
 fn copy_path_action() -> ActionDescriptor {
@@ -356,6 +369,17 @@ impl SearchProvider for BuiltinCommandProvider {
                 source: Some("builtin".to_string()),
                 icon_hint: None,
             },
+            SearchResult {
+                id: WINSPOT_SETTINGS_COMMAND_ID.to_string(),
+                title: "Winspot Settings".to_string(),
+                subtitle: "Open Winspot preferences".to_string(),
+                kind: SearchResultKind::Command,
+                score: 0.0,
+                primary_action: ActionKind::Open,
+                actions: vec![open_settings_action()],
+                source: Some("builtin".to_string()),
+                icon_hint: None,
+            },
         ]
     }
 }
@@ -568,6 +592,23 @@ impl SearchProvider for BrowserHistoryProvider {
     }
 }
 
+/// Builds the search result for a plugin identity, including the executable
+/// action chips supported for that plugin. Shared by the built-in-only provider
+/// and the registry-backed [`PluginProvider`] so both render identically.
+fn plugin_result(id: &str, name: &str) -> SearchResult {
+    SearchResult {
+        id: format!("plugin:{id}"),
+        title: name.to_string(),
+        subtitle: "Internal plugin".to_string(),
+        kind: SearchResultKind::Plugin,
+        score: 0.0,
+        primary_action: ActionKind::PluginCommand,
+        actions: executable_plugin_actions(id),
+        source: Some("plugin".to_string()),
+        icon_hint: None,
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct BuiltInPluginProvider;
 
@@ -579,17 +620,34 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
             .filter(|manifest| {
                 manifest.enabled && manifest.name.to_lowercase().contains(&normalized)
             })
-            .map(|manifest| SearchResult {
-                id: format!("plugin:{}", manifest.id),
-                title: manifest.name,
-                subtitle: "Internal plugin".to_string(),
-                kind: SearchResultKind::Plugin,
-                score: 0.0,
-                primary_action: ActionKind::PluginCommand,
-                actions: executable_plugin_actions(&manifest.id),
-                source: Some("plugin".to_string()),
-                icon_hint: None,
-            })
+            .map(|manifest| plugin_result(&manifest.id, &manifest.name))
+            .collect()
+    }
+}
+
+/// Dynamic provider backed by a shared [`PluginRegistry`]. Unlike
+/// [`BuiltInPluginProvider`], this surfaces both the built-in plugin identities
+/// and any user-authored manifests loaded from the plugins directory, and it
+/// matches against the registry that was loaded once at startup rather than
+/// rebuilding the manifest list on every keystroke.
+#[derive(Clone)]
+pub struct PluginProvider {
+    registry: Arc<PluginRegistry>,
+}
+
+impl PluginProvider {
+    pub fn new(registry: Arc<PluginRegistry>) -> Self {
+        Self { registry }
+    }
+}
+
+impl DynamicSearchProvider for PluginProvider {
+    fn search(&self, query: &str) -> Vec<SearchResult> {
+        let normalized = query.trim().to_lowercase();
+        self.registry
+            .enabled_manifests()
+            .filter(|manifest| manifest.name.to_lowercase().contains(&normalized))
+            .map(|manifest| plugin_result(&manifest.id, &manifest.name))
             .collect()
     }
 }

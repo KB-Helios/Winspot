@@ -52,6 +52,7 @@ mod windows_tests {
                 PipeConfig {
                     pipe_name: server_name,
                     usage_log_path: None,
+                    plugins_dir: None,
                 },
                 &engine,
             )
@@ -110,12 +111,14 @@ mod windows_tests {
             let engine = build_search_engine(&PipeConfig {
                 pipe_name: server_name.clone(),
                 usage_log_path: None,
+                plugins_dir: None,
             })
             .expect("build search engine");
             serve_pipe_once(
                 PipeConfig {
                     pipe_name: server_name,
                     usage_log_path: None,
+                    plugins_dir: None,
                 },
                 &engine,
             )
@@ -176,6 +179,7 @@ mod windows_tests {
                 PipeConfig {
                     pipe_name: server_name,
                     usage_log_path: Some(server_usage_log_path),
+                    plugins_dir: None,
                 },
                 &engine,
             )
@@ -240,6 +244,7 @@ mod windows_tests {
                 PipeConfig {
                     pipe_name: server_name,
                     usage_log_path: None,
+                    plugins_dir: None,
                 },
                 &engine,
             )
@@ -318,6 +323,7 @@ mod windows_tests {
                 PipeConfig {
                     pipe_name: server_name,
                     usage_log_path: None,
+                    plugins_dir: None,
                 },
                 &engine,
             )
@@ -366,6 +372,7 @@ mod windows_tests {
         let engine = build_search_engine(&PipeConfig {
             pipe_name: r"\\.\pipe\winspot-unused".to_string(),
             usage_log_path: Some(path.clone()),
+            plugins_dir: None,
         })
         .expect("build engine with usage");
 
@@ -381,6 +388,7 @@ mod windows_tests {
         let engine = build_search_engine(&PipeConfig {
             pipe_name: r"\\.\pipe\winspot-unused".to_string(),
             usage_log_path: None,
+            plugins_dir: None,
         })
         .expect("build engine with settings");
 
@@ -401,6 +409,7 @@ mod windows_tests {
                 PipeConfig {
                     pipe_name: server_name,
                     usage_log_path: None,
+                    plugins_dir: None,
                 },
                 &engine,
             )
@@ -456,6 +465,7 @@ mod windows_tests {
                 PipeConfig {
                     pipe_name: server_name,
                     usage_log_path: None,
+                    plugins_dir: None,
                 },
                 &engine,
             )
