@@ -368,6 +368,7 @@ dependencies = [
  "windows-sys",
  "winspot-actions",
  "winspot-core",
+ "winspot-plugins",
  "winspot-preview",
  "winspot-search",
 ]

@@ -234,6 +234,24 @@ public sealed class LauncherViewModelTests
         Assert.AreEqual("Open", client.LastActionKind);
     }
 
+    [TestMethod]
+    public async Task AcceptSelection_WithSettingsCommand_RaisesSettingsRequestedWithoutDispatching()
+    {
+        var client = new FakeWinspotIpcClient();
+        var viewModel = new LauncherViewModel(client);
+        viewModel.Results.Add(Result(LauncherViewModel.SettingsCommandId, "Winspot Settings"));
+        viewModel.SelectedResult = viewModel.Results[0];
+
+        var settingsRequested = false;
+        viewModel.SettingsRequested += (_, _) => settingsRequested = true;
+
+        var shouldHide = await viewModel.AcceptSelectionAsync();
+
+        Assert.IsTrue(shouldHide);
+        Assert.IsTrue(settingsRequested, "Settings command should request the settings window.");
+        Assert.IsNull(client.LastActionKind, "Settings command must not be dispatched to the daemon.");
+    }
+
     private static SearchResultItem Result(string id, string title) => new(
         id,
         title,

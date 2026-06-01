@@ -1,10 +1,13 @@
 use std::fs;
+use std::sync::Arc;
 
 use winspot_core::{ActionKind, SearchResultKind};
+use winspot_plugins::PluginRegistry;
 use winspot_search::providers::{
     BrowserHistoryProvider, BuiltInPluginProvider, BuiltinCommandProvider, CalculatorProvider,
-    DynamicSearchProvider, FileSystemProvider, RunningProcessProvider, StartMenuAppProvider,
-    UnitConversionProvider, WindowsSettingsProvider,
+    DynamicSearchProvider, FileSystemProvider, PluginProvider, RunningProcessProvider,
+    StartMenuAppProvider, UnitConversionProvider, WINSPOT_SETTINGS_COMMAND_ID,
+    WindowsSettingsProvider,
 };
 
 #[test]
@@ -203,4 +206,40 @@ fn built_in_plugin_provider_exposes_internal_plugins() {
     assert_eq!(results[0].title, "Clipboard");
     assert_eq!(results[0].kind, SearchResultKind::Plugin);
     assert_eq!(results[0].primary_action, ActionKind::PluginCommand);
+}
+
+#[test]
+fn builtin_command_provider_exposes_winspot_settings() {
+    let results = BuiltinCommandProvider.collect_results();
+
+    let settings = results
+        .iter()
+        .find(|result| result.id == WINSPOT_SETTINGS_COMMAND_ID)
+        .expect("settings command present");
+    assert_eq!(settings.title, "Winspot Settings");
+}
+
+#[test]
+fn plugin_provider_includes_built_ins_and_loaded_manifests() {
+    let root = std::env::temp_dir().join(format!("winspot-search-plugins-{}", std::process::id()));
+    fs::create_dir_all(&root).expect("create plugin dir");
+    fs::write(
+        root.join("custom.json"),
+        r#"{"id":"custom","name":"Custom Plugin","capabilities":[],"enabled":true}"#,
+    )
+    .expect("write manifest");
+
+    let mut registry = PluginRegistry::with_built_ins();
+    registry.load_dir_into(&root).expect("merge manifests");
+    let provider = PluginProvider::new(Arc::new(registry));
+
+    let built_in = provider.search("clipboard");
+    assert_eq!(built_in[0].title, "Clipboard");
+    assert_eq!(built_in[0].primary_action, ActionKind::PluginCommand);
+
+    let custom = provider.search("custom");
+    assert_eq!(custom[0].title, "Custom Plugin");
+    assert_eq!(custom[0].kind, SearchResultKind::Plugin);
+
+    fs::remove_dir_all(root).expect("cleanup");
 }

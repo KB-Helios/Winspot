@@ -34,6 +34,7 @@ public sealed partial class App : Application
             MotionSettings.ReduceMotion = settings.ReduceMotion;
 
             _mainWindow = new MainWindow(settings);
+            _mainWindow.ViewModel.SettingsRequested += (_, _) => ShowSettings();
             desktop.MainWindow = _mainWindow;
             desktop.ShutdownRequested += (_, _) => WinspotIpcClient.StopBackendIfOwned();
             desktop.Exit += (_, _) =>

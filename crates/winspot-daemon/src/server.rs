@@ -18,11 +18,12 @@ use winspot_core::{
     MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PreviewChunk, PreviewReady, PreviewRequested,
     ResultBatch, SearchCompleted,
 };
+use winspot_plugins::PluginRegistry;
 use winspot_preview::{DefaultPreviewProvider, PreviewProvider};
 use winspot_search::{
     engine::SearchEngine,
     providers::{
-        BuiltInPluginProvider, BuiltinCommandProvider, CalculatorProvider, FileSystemProvider,
+        BuiltinCommandProvider, CalculatorProvider, FileSystemProvider, PluginProvider,
         RefreshableProvider, RunningProcessProvider, StartMenuAppProvider, UnitConversionProvider,
         WindowsSettingsProvider,
     },
@@ -38,6 +39,9 @@ const CANDIDATE_TTL_SECONDS: u64 = 5;
 pub struct PipeConfig {
     pub pipe_name: String,
     pub usage_log_path: Option<PathBuf>,
+    /// Directory scanned for user-authored plugin manifests (`*.json`). When
+    /// present, valid manifests are merged on top of the built-in plugins.
+    pub plugins_dir: Option<PathBuf>,
 }
 
 impl Default for PipeConfig {
@@ -45,6 +49,7 @@ impl Default for PipeConfig {
         Self {
             pipe_name: r"\\.\pipe\winspot-dev".to_string(),
             usage_log_path: default_usage_log_path(),
+            plugins_dir: default_plugins_dir(),
         }
     }
 }
@@ -124,7 +129,26 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
     )
     .with_dynamic_provider(Arc::new(CalculatorProvider))
     .with_dynamic_provider(Arc::new(UnitConversionProvider))
-    .with_dynamic_provider(Arc::new(BuiltInPluginProvider)))
+    .with_dynamic_provider(Arc::new(PluginProvider::new(build_plugin_registry(
+        config.plugins_dir.as_deref(),
+    )))))
+}
+
+/// Builds the plugin registry the daemon serves from: the built-in plugin
+/// identities plus any valid user manifests found in `plugins_dir`. A missing
+/// directory or individual malformed manifest is tolerated so a bad plugin can
+/// never stop the daemon from starting.
+fn build_plugin_registry(plugins_dir: Option<&std::path::Path>) -> Arc<PluginRegistry> {
+    let mut registry = PluginRegistry::with_built_ins();
+    if let Some(dir) = plugins_dir
+        && let Err(error) = registry.load_dir_into(dir)
+    {
+        eprintln!(
+            "winspot-daemon: failed to scan plugins directory {}: {error:?}",
+            dir.display()
+        );
+    }
+    Arc::new(registry)
 }
 
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
@@ -390,6 +414,22 @@ fn default_usage_log_path() -> Option<PathBuf> {
     env::var("LOCALAPPDATA")
         .ok()
         .map(|local_app_data| PathBuf::from(local_app_data).join("Winspot\\usage-events.jsonl"))
+}
+
+/// Resolves the directory scanned for user plugin manifests, mirroring
+/// [`default_usage_log_path`]: a portable install keeps plugins beside the
+/// executable, otherwise they live under `%LOCALAPPDATA%\Winspot\plugins`.
+fn default_plugins_dir() -> Option<PathBuf> {
+    if let Ok(executable) = env::current_exe()
+        && let Some(directory) = executable.parent()
+        && directory.join("Winspot.portable").exists()
+    {
+        return Some(directory.join("plugins"));
+    }
+
+    env::var("LOCALAPPDATA")
+        .ok()
+        .map(|local_app_data| PathBuf::from(local_app_data).join("Winspot\\plugins"))
 }
 
 fn current_unix_seconds() -> u64 {
