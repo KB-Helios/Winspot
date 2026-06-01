@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 
 using Avalonia;
 using Avalonia.Animation.Easings;
@@ -17,6 +18,7 @@ namespace Winspot_App;
 public sealed partial class MainWindow : Window
 {
     private static readonly TimeSpan RevealDuration = TimeSpan.FromMilliseconds(160);
+    private static readonly TimeSpan ResizeDuration = TimeSpan.FromMilliseconds(190);
     private static readonly CubicEaseOut RevealEasing = new();
 
     private CancellationTokenSource? _boundsAnimationCancellation;
@@ -36,6 +38,11 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         Height = LauncherWindowLayout.CompactHeight;
+        if (MotionSettings.ReduceMotion)
+        {
+            ResultsHost.Transitions = null;
+        }
+
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Opened += OnOpened;
         Closing += OnClosing;
@@ -254,6 +261,14 @@ public sealed partial class MainWindow : Window
         visual.StopAnimation("Scale");
         visual.StopAnimation("Offset");
 
+        if (MotionSettings.ReduceMotion)
+        {
+            visual.Opacity = 1;
+            visual.Scale = new Vector3D(1, 1, 1);
+            visual.Offset = new Vector3D();
+            return;
+        }
+
         var centerX = Math.Max(SpotlightSurface.Bounds.Width, 1) / 2;
         var centerY = Math.Max(SpotlightSurface.Bounds.Height, 1) / 2;
         visual.CenterPoint = new Vector3D(centerX, centerY, 0);
@@ -294,27 +309,42 @@ public sealed partial class MainWindow : Window
         var cancellation = new CancellationTokenSource();
         _boundsAnimationCancellation = cancellation;
 
+        var startHeight = Height;
+        var startPosition = Position;
+        var targetPosition = LauncherWindowLayout.ToPixels(targetBounds, scaling);
+        Width = targetBounds.Width;
+
+        if (MotionSettings.ReduceMotion)
+        {
+            Height = targetBounds.Height;
+            Position = targetPosition;
+            return;
+        }
+
         try
         {
-            var startHeight = Height;
-            var startPosition = Position;
-            var targetPosition = LauncherWindowLayout.ToPixels(targetBounds, scaling);
-            Width = targetBounds.Width;
-
-            const int frames = 14;
-            for (var frame = 1; frame <= frames; frame++)
+            // Drive the OS-level window resize off elapsed wall-clock time rather
+            // than a fixed frame count, so it stays smooth when frames are dropped.
+            var stopwatch = Stopwatch.StartNew();
+            while (true)
             {
                 if (cancellation.IsCancellationRequested)
                 {
                     return;
                 }
 
-                var progress = frame / (double)frames;
+                var progress = Math.Clamp(stopwatch.Elapsed.TotalMilliseconds / ResizeDuration.TotalMilliseconds, 0, 1);
                 var eased = 1 - Math.Pow(1 - progress, 3);
                 Height = startHeight + ((targetBounds.Height - startHeight) * eased);
                 Position = new PixelPoint(
                     targetPosition.X,
                     (int)Math.Round(startPosition.Y + ((targetPosition.Y - startPosition.Y) * eased)));
+
+                if (progress >= 1)
+                {
+                    break;
+                }
+
                 await Task.Delay(16, cancellation.Token).ConfigureAwait(true);
             }
 

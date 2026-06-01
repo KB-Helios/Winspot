@@ -23,6 +23,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private string _key = "Space";
     private bool _launchOnStartup;
     private bool _showTrayIcon = true;
+    private bool _reduceMotion;
     private string _statusMessage = string.Empty;
 
     public SettingsViewModel()
@@ -90,6 +91,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         set => SetField(ref _showTrayIcon, value);
     }
 
+    public bool ReduceMotion
+    {
+        get => _reduceMotion;
+        set => SetField(ref _reduceMotion, value);
+    }
+
     public string StatusMessage
     {
         get => _statusMessage;
@@ -106,6 +113,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         Hotkey = BuildBinding(),
         LaunchOnStartup = _launchOnStartup,
         ShowTrayIcon = _showTrayIcon,
+        ReduceMotion = _reduceMotion,
     };
 
     public bool TrySave()
@@ -151,6 +159,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _key = settings.Hotkey.Key;
         _launchOnStartup = settings.LaunchOnStartup;
         _showTrayIcon = settings.ShowTrayIcon;
+        _reduceMotion = settings.ReduceMotion;
     }
 
     private HotkeyBinding BuildBinding() => new()

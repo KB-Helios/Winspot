@@ -9,4 +9,8 @@ public sealed class LauncherSettings
 
     /// Whether the launcher keeps a notification-area (system tray) icon.
     public bool ShowTrayIcon { get; init; } = true;
+
+    /// When true, the launcher skips reveal/resize/transition animations and
+    /// snaps directly to the final state.
+    public bool ReduceMotion { get; init; }
 }

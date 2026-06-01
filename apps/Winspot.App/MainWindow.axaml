@@ -11,6 +11,7 @@
     MinWidth="420"
     MinHeight="76"
     Background="Transparent"
+    TransparencyLevelHint="Mica, AcrylicBlur, Blur"
     CanResize="False"
     ExtendClientAreaToDecorationsHint="True"
     ShowInTaskbar="False"
@@ -32,50 +33,90 @@
         <Style Selector="TextBox.query-box">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CaretBrush" Value="#FFE8EDF7" />
-            <Setter Property="Foreground" Value="#FFE8EDF7" />
+            <Setter Property="CaretBrush" Value="{DynamicResource CaretBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="FontSize" Value="18" />
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="SelectionBrush" Value="#665F6F84" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource SelectionHighlightBrush}" />
         </Style>
 
         <Style Selector="ListBox.results-list">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+
+        <!-- Results reveal: fade + slide-up when the launcher expands. -->
+        <Style Selector="Grid#ResultsHost">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="translateY(10px)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="Grid#ResultsHost.expanded">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="translateY(0px)" />
         </Style>
 
         <Style Selector="ListBoxItem">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#FFFFFFFF" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="ListBoxItem /template/ ContentPresenter">
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
         </Style>
 
         <Style Selector="ListBoxItem:pointerover">
-            <Setter Property="Background" Value="#FF161E2A" />
+            <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
         </Style>
 
         <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#FF161E2A" />
+            <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
         </Style>
 
         <Style Selector="ListBoxItem:selected">
-            <Setter Property="Background" Value="#FF1A2230" />
-            <Setter Property="Foreground" Value="#FFE8EDF7" />
+            <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         </Style>
 
         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-            <Setter Property="Background" Value="#FF1A2230" />
+            <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
         </Style>
 
         <Style Selector="Border.action-chip">
-            <Setter Property="Background" Value="#FF202938" />
-            <Setter Property="BorderBrush" Value="#335F83A8" />
+            <Setter Property="Background" Value="{DynamicResource PanelElevatedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ChipBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.15" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
         </Style>
 
         <Style Selector="Border.action-chip.focused">
-            <Setter Property="Background" Value="#FF2A3B52" />
-            <Setter Property="BorderBrush" Value="#FF7FB4FF" />
+            <Setter Property="Background" Value="{DynamicResource ChipFocusBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ChipFocusBorderBrush}" />
         </Style>
     </Window.Styles>
 
@@ -85,186 +126,201 @@
             Classes="spotlight-surface"
             Margin="8"
             Padding="0"
-            Background="#FF111620"
-            BorderBrush="#26FFFFFF"
+            Background="Transparent"
+            BorderBrush="{DynamicResource BorderSubtleBrush}"
             BorderThickness="1"
             BoxShadow="0 14 38 0 #78000000"
+            ClipToBounds="True"
             CornerRadius="20">
-            <Grid RowDefinitions="Auto,*" RowSpacing="8">
-                <Border Classes="search-shell">
-                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                            FontSize="17"
-                            Foreground="#FFAEB7C6"
-                            Text="&#xE721;" />
+            <Panel>
+                <ExperimentalAcrylicBorder IsHitTestVisible="False" CornerRadius="20">
+                    <ExperimentalAcrylicBorder.Material>
+                        <ExperimentalAcrylicMaterial
+                            BackgroundSource="Digger"
+                            FallbackColor="{DynamicResource SurfaceColor}"
+                            MaterialOpacity="0.82"
+                            TintColor="{DynamicResource SurfaceTintColor}"
+                            TintOpacity="1" />
+                    </ExperimentalAcrylicBorder.Material>
+                </ExperimentalAcrylicBorder>
 
-                        <TextBox
-                            x:Name="SearchBox"
-                            Grid.Column="1"
-                            Classes="query-box"
-                            AutomationProperties.AutomationId="WinspotSearchBox"
-                            AutomationProperties.Name="Winspot search"
-                            Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            PlaceholderText="Search apps, files, commands, and plugins" />
+                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                    <Border Classes="search-shell">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                FontSize="17"
+                                Foreground="{DynamicResource TextSecondaryBrush}"
+                                Text="&#xE721;" />
 
-                        <TextBlock
-                            Grid.Column="2"
-                            VerticalAlignment="Center"
-                            FontSize="11"
-                            Foreground="#FF8792A3"
-                            Text="{Binding HotkeyHint}" />
-                    </Grid>
-                </Border>
+                            <TextBox
+                                x:Name="SearchBox"
+                                Grid.Column="1"
+                                Classes="query-box"
+                                AutomationProperties.AutomationId="WinspotSearchBox"
+                                AutomationProperties.Name="Winspot search"
+                                Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="Search apps, files, commands, and plugins" />
 
-                <Grid
-                    x:Name="ResultsHost"
-                    Grid.Row="1"
-                    ColumnDefinitions="2*,*"
-                    ColumnSpacing="12"
-                    IsVisible="{Binding IsExpanded}"
-                    Margin="8,0,8,8"
-                    RowDefinitions="*,Auto,Auto">
-                    <Border
-                        Grid.RowSpan="2"
-                        Background="#FF0F141D"
-                        BorderBrush="#14FFFFFF"
-                        BorderThickness="1"
-                        CornerRadius="16"
-                        Padding="8">
-                        <ListBox
-                            Classes="results-list"
-                            AutomationProperties.AutomationId="WinspotResultsList"
-                            AutomationProperties.Name="Search results"
-                            ItemsSource="{Binding Results}"
-                            SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate
-                                    DataType="models:SearchResultItem"
-                                    x:DataType="models:SearchResultItem">
-                                    <Grid
-                                        MinHeight="54"
-                                        ColumnDefinitions="Auto,*,Auto"
-                                        ColumnSpacing="12"
-                                        Margin="10,8">
-                                        <Border
-                                            Width="34"
-                                            Height="34"
-                                            VerticalAlignment="Center"
-                                            Background="#FF202938"
-                                            CornerRadius="9">
-                                            <Panel>
-                                                <TextBlock
-                                                    HorizontalAlignment="Center"
-                                                    VerticalAlignment="Center"
-                                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                                    FontSize="16"
-                                                    Foreground="#FFCBD5E1"
-                                                    Text="{Binding IconGlyph}" />
-                                                <Image
-                                                    Width="22"
-                                                    Height="22"
-                                                    HorizontalAlignment="Center"
-                                                    VerticalAlignment="Center"
-                                                    Source="{Binding IconPath, Converter={StaticResource IconPathToBitmap}}" />
-                                            </Panel>
-                                        </Border>
-
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                            <TextBlock
-                                                FontSize="15"
-                                                Foreground="#FFE8EDF7"
-                                                Text="{Binding Title}"
-                                                TextTrimming="CharacterEllipsis" />
-                                            <TextBlock
-                                                FontSize="12"
-                                                Foreground="#FFAEB7C6"
-                                                Text="{Binding Subtitle}"
-                                                TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-
-                                        <Border
-                                            Grid.Column="2"
-                                            VerticalAlignment="Center"
-                                            Background="#FF202938"
-                                            CornerRadius="8"
-                                            Padding="7,3">
-                                            <TextBlock
-                                                FontSize="11"
-                                                Foreground="#FFAEB7C6"
-                                                Text="{Binding Kind}" />
-                                        </Border>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="{DynamicResource TextMutedBrush}"
+                                Text="{Binding HotkeyHint}" />
+                        </Grid>
                     </Border>
 
-                    <ItemsControl
+                    <Grid
+                        x:Name="ResultsHost"
                         Grid.Row="1"
-                        Grid.Column="0"
-                        Margin="4,8,4,0"
-                        ItemsSource="{Binding SelectedActions}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="8" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate
-                                DataType="models:ActionViewItem"
-                                x:DataType="models:ActionViewItem">
-                                <Border
-                                    Classes="action-chip"
-                                    Classes.focused="{Binding IsFocused}"
-                                    CornerRadius="8"
-                                    Padding="9,4">
+                        ColumnDefinitions="2*,*"
+                        ColumnSpacing="12"
+                        Classes.expanded="{Binding IsExpanded}"
+                        IsVisible="{Binding IsExpanded}"
+                        Margin="8,0,8,8"
+                        RowDefinitions="*,Auto,Auto">
+                        <Border
+                            Grid.RowSpan="2"
+                            Background="{DynamicResource PanelBrush}"
+                            BorderBrush="{DynamicResource BorderInnerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="16"
+                            Padding="8">
+                            <ListBox
+                                Classes="results-list"
+                                AutomationProperties.AutomationId="WinspotResultsList"
+                                AutomationProperties.Name="Search results"
+                                ItemsSource="{Binding Results}"
+                                SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate
+                                        DataType="models:SearchResultItem"
+                                        x:DataType="models:SearchResultItem">
+                                        <Grid
+                                            MinHeight="54"
+                                            ColumnDefinitions="Auto,*,Auto"
+                                            ColumnSpacing="12"
+                                            Margin="10,8">
+                                            <Border
+                                                Width="34"
+                                                Height="34"
+                                                VerticalAlignment="Center"
+                                                Background="{DynamicResource PanelElevatedBrush}"
+                                                CornerRadius="9">
+                                                <Panel>
+                                                    <TextBlock
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                        FontSize="16"
+                                                        Foreground="{DynamicResource IconForegroundBrush}"
+                                                        Text="{Binding IconGlyph}" />
+                                                    <Image
+                                                        Width="22"
+                                                        Height="22"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Source="{Binding IconPath, Converter={StaticResource IconPathToBitmap}}" />
+                                                </Panel>
+                                            </Border>
+
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                <TextBlock
+                                                    FontSize="15"
+                                                    Foreground="{DynamicResource TextPrimaryBrush}"
+                                                    Text="{Binding Title}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"
+                                                    Text="{Binding Subtitle}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+
+                                            <Border
+                                                Grid.Column="2"
+                                                VerticalAlignment="Center"
+                                                Background="{DynamicResource PanelElevatedBrush}"
+                                                CornerRadius="8"
+                                                Padding="7,3">
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"
+                                                    Text="{Binding Kind}" />
+                                            </Border>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
+
+                        <ItemsControl
+                            Grid.Row="1"
+                            Grid.Column="0"
+                            Margin="4,8,4,0"
+                            ItemsSource="{Binding SelectedActions}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate
+                                    DataType="models:ActionViewItem"
+                                    x:DataType="models:ActionViewItem">
+                                    <Border
+                                        Classes="action-chip"
+                                        Classes.focused="{Binding IsFocused}"
+                                        CornerRadius="8"
+                                        Padding="9,4">
+                                        <TextBlock
+                                            FontSize="11"
+                                            Foreground="{DynamicResource TextPrimaryBrush}"
+                                            Text="{Binding Label}" />
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border
+                            Grid.Column="1"
+                            Background="{DynamicResource PanelBrush}"
+                            BorderBrush="{DynamicResource BorderInnerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="16"
+                            Padding="14">
+                            <ScrollViewer>
+                                <StackPanel Spacing="8">
                                     <TextBlock
-                                        FontSize="11"
-                                        Foreground="#FFD4DBE8"
-                                        Text="{Binding Label}" />
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                                        AutomationProperties.AutomationId="WinspotPreviewTitle"
+                                        FontSize="15"
+                                        FontWeight="SemiBold"
+                                        Foreground="{DynamicResource TextPrimaryBrush}"
+                                        Text="{Binding PreviewTitle}"
+                                        TextWrapping="Wrap" />
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="WinspotPreviewBody"
+                                        FontSize="12"
+                                        Foreground="{DynamicResource TextSecondaryBrush}"
+                                        Text="{Binding PreviewBody}"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
 
-                    <Border
-                        Grid.Column="1"
-                        Background="#FF0F141D"
-                        BorderBrush="#14FFFFFF"
-                        BorderThickness="1"
-                        CornerRadius="16"
-                        Padding="14">
-                        <ScrollViewer>
-                            <StackPanel Spacing="8">
-                                <TextBlock
-                                    AutomationProperties.AutomationId="WinspotPreviewTitle"
-                                    FontSize="15"
-                                    FontWeight="SemiBold"
-                                    Foreground="#FFE8EDF7"
-                                    Text="{Binding PreviewTitle}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    AutomationProperties.AutomationId="WinspotPreviewBody"
-                                    FontSize="12"
-                                    Foreground="#FFAEB7C6"
-                                    Text="{Binding PreviewBody}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Border>
-
-                    <TextBlock
-                        Grid.Row="2"
-                        Grid.Column="1"
-                        Margin="4,8,4,0"
-                        AutomationProperties.AutomationId="WinspotStatusText"
-                        FontSize="12"
-                        Foreground="#FF8792A3"
-                        Text="{Binding StatusText}" />
+                        <TextBlock
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            Margin="4,8,4,0"
+                            AutomationProperties.AutomationId="WinspotStatusText"
+                            FontSize="12"
+                            Foreground="{DynamicResource TextMutedBrush}"
+                            Text="{Binding StatusText}" />
+                    </Grid>
                 </Grid>
-            </Grid>
+            </Panel>
         </Border>
     </Panel>
 </Window>

@@ -1,0 +1,71 @@
+<ResourceDictionary
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        Winspot design tokens. Colors live here as the single source of truth so
+        views reference semantic brushes (SurfaceBrush, TextPrimaryBrush, ...)
+        instead of repeating hex literals. The Dark variant carries the original
+        "Calm Graphite" palette; the Light variant mirrors each token so the app
+        can follow the system theme.
+    -->
+    <ResourceDictionary.ThemeDictionaries>
+        <!-- ============================ DARK ============================ -->
+        <ResourceDictionary x:Key="Dark">
+            <!-- Surface tints used by the acrylic/Mica material and fallbacks. -->
+            <Color x:Key="SurfaceColor">#FF111620</Color>
+            <Color x:Key="SurfaceTintColor">#FF0E131C</Color>
+
+            <SolidColorBrush x:Key="SurfaceBrush" Color="#FF111620" />
+            <SolidColorBrush x:Key="SurfaceAcrylicFallbackBrush" Color="#F2111620" />
+            <SolidColorBrush x:Key="PanelBrush" Color="#FF0F141D" />
+            <SolidColorBrush x:Key="PanelElevatedBrush" Color="#FF202938" />
+            <SolidColorBrush x:Key="SelectionBrush" Color="#FF1A2230" />
+            <SolidColorBrush x:Key="HoverBrush" Color="#FF161E2A" />
+
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFE8EDF7" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FFAEB7C6" />
+            <SolidColorBrush x:Key="TextMutedBrush" Color="#FF8792A3" />
+            <SolidColorBrush x:Key="IconForegroundBrush" Color="#FFCBD5E1" />
+
+            <SolidColorBrush x:Key="BorderSubtleBrush" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="BorderInnerBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="ChipBorderBrush" Color="#335F83A8" />
+            <SolidColorBrush x:Key="ChipFocusBrush" Color="#FF2A3B52" />
+            <SolidColorBrush x:Key="ChipFocusBorderBrush" Color="#FF7FB4FF" />
+
+            <SolidColorBrush x:Key="AccentBrush" Color="#FF72F1D6" />
+            <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FF06140F" />
+            <SolidColorBrush x:Key="CaretBrush" Color="#FFE8EDF7" />
+            <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#665F6F84" />
+        </ResourceDictionary>
+
+        <!-- ============================ LIGHT =========================== -->
+        <ResourceDictionary x:Key="Light">
+            <Color x:Key="SurfaceColor">#FFF4F6FB</Color>
+            <Color x:Key="SurfaceTintColor">#FFFFFFFF</Color>
+
+            <SolidColorBrush x:Key="SurfaceBrush" Color="#FFF4F6FB" />
+            <SolidColorBrush x:Key="SurfaceAcrylicFallbackBrush" Color="#F2F4F6FB" />
+            <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="PanelElevatedBrush" Color="#FFE5EAF2" />
+            <SolidColorBrush x:Key="SelectionBrush" Color="#FFDCE4F1" />
+            <SolidColorBrush x:Key="HoverBrush" Color="#FFEAEFF7" />
+
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FF161B24" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FF4A5567" />
+            <SolidColorBrush x:Key="TextMutedBrush" Color="#FF6B7589" />
+            <SolidColorBrush x:Key="IconForegroundBrush" Color="#FF3A4555" />
+
+            <SolidColorBrush x:Key="BorderSubtleBrush" Color="#1A000000" />
+            <SolidColorBrush x:Key="BorderInnerBrush" Color="#0F000000" />
+            <SolidColorBrush x:Key="ChipBorderBrush" Color="#335F83A8" />
+            <SolidColorBrush x:Key="ChipFocusBrush" Color="#FFD3E2FB" />
+            <SolidColorBrush x:Key="ChipFocusBorderBrush" Color="#FF3D7BE0" />
+
+            <SolidColorBrush x:Key="AccentBrush" Color="#FF1FA98C" />
+            <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="CaretBrush" Color="#FF161B24" />
+            <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#66AFC4E0" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

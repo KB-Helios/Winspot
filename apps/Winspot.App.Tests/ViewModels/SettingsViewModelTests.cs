@@ -54,6 +54,7 @@ public sealed class SettingsViewModelTests
             Hotkey = new HotkeyBinding { Key = "K", Modifiers = new List<string> { "Control", "Shift" } },
             LaunchOnStartup = true,
             ShowTrayIcon = false,
+            ReduceMotion = true,
         });
 
         var viewModel = new SettingsViewModel(store);
@@ -64,6 +65,7 @@ public sealed class SettingsViewModelTests
         Assert.AreEqual("K", viewModel.Key);
         Assert.IsTrue(viewModel.LaunchOnStartup);
         Assert.IsFalse(viewModel.ShowTrayIcon);
+        Assert.IsTrue(viewModel.ReduceMotion);
     }
 
     [TestMethod]
@@ -142,6 +144,7 @@ public sealed class SettingsViewModelTests
             Key = "J",
             ShowTrayIcon = false,
             LaunchOnStartup = false,
+            ReduceMotion = true,
         };
 
         var saved = viewModel.TrySave();
@@ -152,6 +155,7 @@ public sealed class SettingsViewModelTests
         Assert.AreEqual("J", reloaded.Hotkey.Key);
         CollectionAssert.AreEquivalent(new List<string> { "Control", "Shift" }, reloaded.Hotkey.Modifiers);
         Assert.IsFalse(reloaded.ShowTrayIcon);
+        Assert.IsTrue(reloaded.ReduceMotion);
     }
 
     [TestMethod]

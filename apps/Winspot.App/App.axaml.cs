@@ -31,6 +31,7 @@ public sealed partial class App : Application
         {
             _desktop = desktop;
             var settings = _settingsStore.Load();
+            MotionSettings.ReduceMotion = settings.ReduceMotion;
 
             _mainWindow = new MainWindow(settings);
             desktop.MainWindow = _mainWindow;
@@ -101,6 +102,7 @@ public sealed partial class App : Application
 
     private void OnSettingsSaved(object? sender, LauncherSettings settings)
     {
+        MotionSettings.ReduceMotion = settings.ReduceMotion;
         var registered = _mainWindow?.ApplyHotkey(settings.Hotkey) ?? false;
         if (sender is SettingsViewModel viewModel)
         {

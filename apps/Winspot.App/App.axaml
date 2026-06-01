@@ -5,17 +5,23 @@
     xmlns:conv="using:Winspot_App.Converters"
     RequestedThemeVariant="Dark">
     <Application.Styles>
-        <SimpleTheme />
+        <FluentTheme />
     </Application.Styles>
     <Application.Resources>
-        <conv:IconPathToBitmapConverter x:Key="IconPathToBitmap" />
-        <Color x:Key="SystemAccentColor">#72F1D6</Color>
-        <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#72F1D6" />
-        <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#3BBEA4" />
-        <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#218C7A" />
-        <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#17665B" />
-        <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#9AF8E5" />
-        <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#C8FFF4" />
-        <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#EBFFFB" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://Winspot.App/Themes/Tokens.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <conv:IconPathToBitmapConverter x:Key="IconPathToBitmap" />
+            <Color x:Key="SystemAccentColor">#72F1D6</Color>
+            <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#72F1D6" />
+            <SolidColorBrush x:Key="SystemAccentColorDark1Brush" Color="#3BBEA4" />
+            <SolidColorBrush x:Key="SystemAccentColorDark2Brush" Color="#218C7A" />
+            <SolidColorBrush x:Key="SystemAccentColorDark3Brush" Color="#17665B" />
+            <SolidColorBrush x:Key="SystemAccentColorLight1Brush" Color="#9AF8E5" />
+            <SolidColorBrush x:Key="SystemAccentColorLight2Brush" Color="#C8FFF4" />
+            <SolidColorBrush x:Key="SystemAccentColorLight3Brush" Color="#EBFFFB" />
+        </ResourceDictionary>
     </Application.Resources>
 </Application>
