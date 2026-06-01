@@ -87,12 +87,12 @@ impl ActionExecutor {
             ActionKind::KillProcess => {
                 self.policy
                     .ensure_allowed(ActionCapability::ProcessExecution)?;
-                Ok(format!("Process action queued for {}", action.title))
+                kill_process_action(action)
             }
             ActionKind::PluginCommand => {
                 self.policy
                     .ensure_allowed(ActionCapability::PluginExecution)?;
-                Ok(format!("Ran plugin action {}", action.title))
+                plugin_command_action(action)
             }
         }
     }
@@ -116,6 +116,62 @@ fn run_command_action(action: &ActionRequested) -> anyhow::Result<String> {
         .spawn()
         .map(|_| format!("Launched {}", action.title))
         .map_err(|error| anyhow::anyhow!("run {}: {error}", action.title))
+}
+
+fn kill_process_action(action: &ActionRequested) -> anyhow::Result<String> {
+    // Process results carry their PID in the id ("process:<pid>:<image>"); parse
+    // it rather than trusting the title, and report the real `taskkill` outcome
+    // instead of pretending the kill always succeeds.
+    let pid = action
+        .result_id
+        .strip_prefix("process:")
+        .and_then(|rest| rest.split(':').next())
+        .and_then(|pid| pid.trim().parse::<u32>().ok())
+        .ok_or_else(|| anyhow::anyhow!("refused to kill {}: missing process id", action.title))?;
+
+    let output = Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .output()
+        .map_err(|error| anyhow::anyhow!("kill {}: {error}", action.title))?;
+
+    if output.status.success() {
+        return Ok(format!("Terminated {} (PID {pid})", action.title));
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = if stderr.trim().is_empty() {
+        String::from_utf8_lossy(&output.stdout)
+    } else {
+        stderr
+    };
+    anyhow::bail!(
+        "kill {} (PID {pid}) failed: {}",
+        action.title,
+        detail.trim()
+    )
+}
+
+fn plugin_command_action(action: &ActionRequested) -> anyhow::Result<String> {
+    // Plugin results carry their id as "plugin:<id>". Only built-ins that map to
+    // a launchable command are executable; the rest are search-only providers,
+    // so refuse them explicitly instead of reporting a fake success.
+    let plugin_id = action
+        .result_id
+        .strip_prefix("plugin:")
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("refused to run {}: malformed plugin id", action.title))?;
+
+    let command = match plugin_id {
+        "calculator" => "calc.exe",
+        "terminal" => "wt.exe",
+        other => anyhow::bail!("plugin '{other}' has no executable command"),
+    };
+
+    Command::new(command)
+        .spawn()
+        .map(|_| format!("Launched {}", action.title))
+        .map_err(|error| anyhow::anyhow!("run plugin {}: {error}", action.title))
 }
 
 fn open_action(action: &ActionRequested) -> anyhow::Result<String> {

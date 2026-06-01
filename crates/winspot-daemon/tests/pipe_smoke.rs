@@ -8,8 +8,8 @@ mod windows_tests {
         time::timeout,
     };
     use winspot_core::{
-        ActionKind, ActionRequested, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
-        PreviewRequested, SearchResult, SearchResultKind, SearchStarted,
+        ActionKind, ActionRequested, Hello, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
+        MAX_PROTOCOL_VERSION, PreviewRequested, SearchResult, SearchResultKind, SearchStarted,
     };
     use winspot_daemon::server::{PipeConfig, build_search_engine, serve_pipe_once};
     use winspot_search::{
@@ -392,6 +392,65 @@ mod windows_tests {
         assert!(results.iter().any(|result| {
             result.title == "Windows Update" && result.kind == SearchResultKind::Setting
         }));
+    }
+
+    #[tokio::test]
+    async fn daemon_rejects_client_requiring_unsupported_protocol() {
+        let pipe_name = format!(r"\\.\pipe\winspot-proto-guard-{}", std::process::id());
+        let server_name = pipe_name.clone();
+        let server = tokio::spawn(async move {
+            let engine = SearchEngine::from_results(Vec::new());
+            serve_pipe_once(
+                PipeConfig {
+                    pipe_name: server_name,
+                    usage_log_path: None,
+                },
+                &engine,
+            )
+            .await
+            .expect("pipe server completes");
+        });
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+
+        let client = ClientOptions::new()
+            .open(&pipe_name)
+            .expect("connect to proto-guard test pipe");
+        let mut client = BufReader::new(client);
+
+        // Client that only speaks a future protocol the daemon doesn't implement.
+        let request = IpcEnvelope::request(
+            "hello-1",
+            IpcPayload::Hello(Hello {
+                min_protocol_version: MAX_PROTOCOL_VERSION + 1,
+                max_protocol_version: MAX_PROTOCOL_VERSION + 1,
+                client_name: "Winspot.Future".to_string(),
+            }),
+        );
+        let mut request_json = serde_json::to_string(&request).expect("serialize hello");
+        request_json.push('\n');
+        client
+            .get_mut()
+            .write_all(request_json.as_bytes())
+            .await
+            .expect("write hello");
+
+        let mut line = String::new();
+        timeout(Duration::from_secs(2), client.read_line(&mut line))
+            .await
+            .expect("hello response before timeout")
+            .expect("read hello response");
+
+        let response: IpcEnvelope =
+            serde_json::from_str(line.trim()).expect("decode hello response");
+        match response.payload {
+            IpcPayload::Error(error) => {
+                assert_eq!(error.code, "protocol_unsupported");
+            }
+            other => panic!("expected protocol Error, got {other:?}"),
+        }
+
+        server.await.expect("server task joins");
     }
 
     #[tokio::test]
