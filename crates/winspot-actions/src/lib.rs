@@ -1,6 +1,9 @@
-use std::{collections::HashSet, process::Command};
+use std::{collections::HashSet, ffi::OsString, process::Command};
 
-use winspot_core::{ActionCapability, ActionCompleted, ActionKind, ActionRequested};
+use winspot_core::{
+    ActionCapability, ActionCompleted, ActionKind, ActionRequested, OpenTarget,
+    classify_open_target,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct ActionPolicy {
@@ -116,12 +119,19 @@ fn run_command_action(action: &ActionRequested) -> anyhow::Result<String> {
 }
 
 fn open_action(action: &ActionRequested) -> anyhow::Result<String> {
-    let Some((_, target)) = action.result_id.split_once(':') else {
-        anyhow::bail!("Action target is missing");
+    // Validate the client-supplied target before handing it to the shell so a
+    // malicious IPC message cannot drive `explorer` into a disallowed protocol
+    // handler or a malformed/injected argument.
+    let target = classify_open_target(&action.result_id)
+        .map_err(|error| anyhow::anyhow!("refused to open {}: {error}", action.title))?;
+
+    let arg: OsString = match target {
+        OpenTarget::Path(path) => path.into_os_string(),
+        OpenTarget::Uri(uri) => OsString::from(uri),
     };
 
     Command::new("explorer")
-        .arg(target)
+        .arg(arg)
         .spawn()
         .map(|_| format!("Opened {}", action.title))
         .map_err(|error| anyhow::anyhow!("open {}: {error}", action.title))

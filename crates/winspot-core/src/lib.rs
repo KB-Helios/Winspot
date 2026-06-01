@@ -1,5 +1,6 @@
 pub mod ipc;
 pub mod search;
+pub mod security;
 
 pub use ipc::{
     ActionCompleted, ActionRequested, BackendError, CancelRequest, Hello, HelloAccepted,
@@ -7,3 +8,4 @@ pub use ipc::{
     PreviewChunk, PreviewReady, PreviewRequested, ResultBatch, SearchCompleted, SearchStarted,
 };
 pub use search::{ActionCapability, ActionDescriptor, ActionKind, SearchResult, SearchResultKind};
+pub use security::{OpenTarget, OpenTargetError, classify_open_target};
