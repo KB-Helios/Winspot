@@ -38,7 +38,21 @@ public sealed class LauncherSettingsStore
             }
 
             var json = File.ReadAllText(_settingsPath);
-            return JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings();
+            var settings = JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings();
+            if (!settings.Hotkey.IsReservedByWindows())
+            {
+                return settings;
+            }
+
+            var repaired = new LauncherSettings
+            {
+                Hotkey = new HotkeyBinding(),
+                LaunchOnStartup = settings.LaunchOnStartup,
+                ShowTrayIcon = settings.ShowTrayIcon,
+                ReduceMotion = settings.ReduceMotion,
+            };
+            Save(repaired);
+            return repaired;
         }
         catch
         {

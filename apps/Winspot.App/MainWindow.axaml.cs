@@ -210,7 +210,7 @@ public sealed partial class MainWindow : Window
     {
         Dispatcher.UIThread.Post(() =>
         {
-            if (IsVisible && IsActive)
+            if (ShouldHideForHotkey(IsVisible, IsActive))
             {
                 Hide();
                 return;
@@ -224,6 +224,8 @@ public sealed partial class MainWindow : Window
 
     public static bool ShouldHandleActionNavigationKey(Key key, int focusedActionIndex) =>
         key is Key.Left or Key.Right && focusedActionIndex >= 0;
+
+    public static bool ShouldHideForHotkey(bool isVisible, bool isActive) => isVisible;
 
     private void ApplyResponsiveBounds()
     {

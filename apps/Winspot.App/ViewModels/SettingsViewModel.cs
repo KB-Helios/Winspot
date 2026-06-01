@@ -131,6 +131,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
 
         var settings = BuildSettings();
+        if (settings.Hotkey.IsReservedByWindows())
+        {
+            StatusMessage = "That hotkey is reserved by Windows. Choose a different chord.";
+            return false;
+        }
+
         _store.Save(settings);
         StartupRegistration.Apply(settings.LaunchOnStartup);
 

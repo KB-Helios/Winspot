@@ -38,4 +38,28 @@ public sealed class HotkeyBindingTests
 
         Assert.AreEqual("Alt K", binding.ToDisplayString());
     }
+
+    [TestMethod]
+    public void IsReservedByWindows_WhenWinSpaceChord_ReturnsTrue()
+    {
+        var binding = new HotkeyBinding
+        {
+            Key = "Space",
+            Modifiers = new List<string> { "Control", "Win" },
+        };
+
+        Assert.IsTrue(binding.IsReservedByWindows());
+    }
+
+    [TestMethod]
+    public void IsReservedByWindows_WhenWinModifierUsesNonSpaceKey_ReturnsFalse()
+    {
+        var binding = new HotkeyBinding
+        {
+            Key = "K",
+            Modifiers = new List<string> { "Win" },
+        };
+
+        Assert.IsFalse(binding.IsReservedByWindows());
+    }
 }

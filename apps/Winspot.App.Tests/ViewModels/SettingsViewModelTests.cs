@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -115,6 +116,23 @@ public sealed class SettingsViewModelTests
         };
 
         Assert.IsFalse(viewModel.TrySave());
+    }
+
+    [TestMethod]
+    public void TrySave_WithReservedWindowsHotkey_FailsAndDoesNotPersist()
+    {
+        var store = new LauncherSettingsStore(_settingsPath);
+        var viewModel = new SettingsViewModel(store)
+        {
+            UseControl = true,
+            UseAlt = false,
+            UseWin = true,
+            Key = "Space",
+        };
+
+        Assert.IsFalse(viewModel.TrySave());
+        Assert.IsTrue(viewModel.StatusMessage.Contains("reserved", StringComparison.OrdinalIgnoreCase));
+        CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, store.Load().Hotkey.Modifiers);
     }
 
     [TestMethod]

@@ -63,6 +63,29 @@ public sealed class LauncherSettingsStoreTests
     }
 
     [TestMethod]
+    public void Load_WithReservedWindowsHotkey_ReplacesHotkeyWithDefaultAndPreservesOtherSettings()
+    {
+        var store = new LauncherSettingsStore(_settingsPath);
+        store.Save(new LauncherSettings
+        {
+            Hotkey = new HotkeyBinding { Key = "Space", Modifiers = new List<string> { "Control", "Win" } },
+            LaunchOnStartup = true,
+            ShowTrayIcon = false,
+            ReduceMotion = true,
+        });
+
+        var reloaded = store.Load();
+        var persisted = new LauncherSettingsStore(_settingsPath).Load();
+
+        Assert.AreEqual("Space", reloaded.Hotkey.Key);
+        CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, reloaded.Hotkey.Modifiers);
+        Assert.IsTrue(reloaded.LaunchOnStartup);
+        Assert.IsFalse(reloaded.ShowTrayIcon);
+        Assert.IsTrue(reloaded.ReduceMotion);
+        CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, persisted.Hotkey.Modifiers);
+    }
+
+    [TestMethod]
     public void ResolveSettingsPath_WhenPortableMarkerExists_UsesLocalDataFolder()
     {
         var root = Path.Combine(Path.GetTempPath(), $"winspot-portable-{Guid.NewGuid():N}");

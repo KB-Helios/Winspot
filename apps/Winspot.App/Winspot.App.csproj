@@ -46,19 +46,19 @@
 
   <Target Name="CopyWinspotDaemonToOutput"
           AfterTargets="Build"
-          DependsOnTargets="BuildWinspotDaemon"
-          Condition="Exists('$(WinspotDaemonExe)')">
+          DependsOnTargets="BuildWinspotDaemon">
     <Copy SourceFiles="$(WinspotDaemonExe)"
           DestinationFolder="$(OutDir)"
+          Condition="Exists('$(WinspotDaemonExe)')"
           SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CopyWinspotDaemonToPublish"
           AfterTargets="Publish"
-          DependsOnTargets="BuildWinspotDaemon"
-          Condition="Exists('$(WinspotDaemonExe)')">
+          DependsOnTargets="BuildWinspotDaemon">
     <Copy SourceFiles="$(WinspotDaemonExe)"
           DestinationFolder="$(PublishDir)"
+          Condition="Exists('$(WinspotDaemonExe)')"
           SkipUnchangedFiles="true" />
   </Target>
 </Project>
