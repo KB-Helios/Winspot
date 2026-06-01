@@ -38,4 +38,7 @@ if ($null -eq $makeAppx) {
 
 $packagePath = Join-Path $repoRoot "artifacts\msix\Winspot-$Runtime.msix"
 & $makeAppx.Source pack /d $msixRoot /p $packagePath /overwrite
+if ($LASTEXITCODE -ne 0) {
+    throw "MakeAppx.exe failed with exit code $LASTEXITCODE"
+}
 Write-Host "MSIX package written to $packagePath"
