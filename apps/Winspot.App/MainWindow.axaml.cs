@@ -148,16 +148,39 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (e.Key is Key.Tab or Key.Right)
+        if (e.Key == Key.Tab)
         {
             ViewModel.FocusActions();
             e.Handled = true;
             return;
         }
 
+        if (e.Key == Key.Right)
+        {
+            if (ViewModel.FocusedActionIndex >= 0)
+            {
+                ViewModel.MoveActionRight();
+            }
+            else
+            {
+                ViewModel.FocusActions();
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Left)
         {
-            ViewModel.FocusResults();
+            if (ViewModel.FocusedActionIndex > 0)
+            {
+                ViewModel.MoveActionLeft();
+            }
+            else
+            {
+                ViewModel.FocusResults();
+            }
+
             e.Handled = true;
             return;
         }

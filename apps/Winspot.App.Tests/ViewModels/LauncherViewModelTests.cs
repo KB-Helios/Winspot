@@ -127,8 +127,8 @@ public sealed class LauncherViewModelTests
             "Open",
             new[]
             {
-                new ActionItem("open", "Open"),
-                new ActionItem("copy", "Copy"),
+                new ActionItem("open", "Open", "Open"),
+                new ActionItem("copy", "Copy", "Copy"),
             });
 
         Assert.AreEqual(0, viewModel.FocusedActionIndex);
@@ -147,6 +147,34 @@ public sealed class LauncherViewModelTests
     }
 
     [TestMethod]
+    public void MoveFocusedActionRightAndLeft_ChangesFocusedAction()
+    {
+        var viewModel = new LauncherViewModel(new FakeWinspotIpcClient());
+        viewModel.SelectedResult = new SearchResultItem(
+            "one",
+            "One",
+            "Subtitle",
+            "File",
+            1,
+            "Open",
+            new[]
+            {
+                new ActionItem("open", "Open", "Open"),
+                new ActionItem("copy-path", "Copy path", "CopyPath"),
+            });
+
+        viewModel.MoveActionRight();
+
+        Assert.AreEqual(1, viewModel.FocusedActionIndex);
+        Assert.IsTrue(viewModel.SelectedActions[1].IsFocused);
+
+        viewModel.MoveActionLeft();
+
+        Assert.AreEqual(0, viewModel.FocusedActionIndex);
+        Assert.IsTrue(viewModel.SelectedActions[0].IsFocused);
+    }
+
+    [TestMethod]
     public async Task AcceptSelection_ReturnsTrueAfterSuccessfulAction()
     {
         var viewModel = new LauncherViewModel(new FakeWinspotIpcClient());
@@ -157,6 +185,53 @@ public sealed class LauncherViewModelTests
 
         Assert.IsTrue(shouldHide);
         Assert.AreEqual("Executed", viewModel.StatusText);
+    }
+
+    [TestMethod]
+    public async Task AcceptSelection_ExecutesFocusedActionKind()
+    {
+        var client = new FakeWinspotIpcClient();
+        var viewModel = new LauncherViewModel(client);
+        viewModel.SelectedResult = new SearchResultItem(
+            "file:C:\\Docs\\notes.txt",
+            "notes.txt",
+            "Subtitle",
+            "File",
+            1,
+            "Open",
+            new[]
+            {
+                new ActionItem("open", "Open", "Open"),
+                new ActionItem("copy-path", "Copy path", "CopyPath"),
+            });
+
+        viewModel.MoveActionRight();
+        await viewModel.AcceptSelectionAsync();
+
+        Assert.AreEqual("CopyPath", client.LastActionKind);
+    }
+
+    [TestMethod]
+    public async Task AcceptSelection_WhenActionsAreNotFocused_ExecutesPrimaryActionKind()
+    {
+        var client = new FakeWinspotIpcClient();
+        var viewModel = new LauncherViewModel(client);
+        viewModel.SelectedResult = new SearchResultItem(
+            "file:C:\\Docs\\notes.txt",
+            "notes.txt",
+            "Subtitle",
+            "File",
+            1,
+            "Open",
+            new[]
+            {
+                new ActionItem("copy-path", "Copy path", "CopyPath"),
+            });
+
+        viewModel.FocusResults();
+        await viewModel.AcceptSelectionAsync();
+
+        Assert.AreEqual("Open", client.LastActionKind);
     }
 
     private static SearchResultItem Result(string id, string title) => new(
@@ -173,8 +248,14 @@ public sealed class LauncherViewModelTests
 
         public Queue<IReadOnlyList<SearchResultItem>> SearchBatches { get; } = new();
 
-        public Task<string> ExecuteAsync(SearchResultItem result, CancellationToken cancellationToken)
+        public string? LastActionKind { get; private set; }
+
+        public Task<string> ExecuteAsync(
+            SearchResultItem result,
+            ActionItem action,
+            CancellationToken cancellationToken)
         {
+            LastActionKind = action.Kind;
             return Task.FromResult("Executed");
         }
 

@@ -42,4 +42,32 @@ public sealed class SearchResultItemTests
         Assert.IsNull(process.IconPath);
         Assert.IsFalse(command.HasIcon);
     }
+
+    [TestMethod]
+    public void DisplayActions_WhenNoActionsProvided_UsesPrimaryActionKind()
+    {
+        var item = new SearchResultItem("file:C:\\Docs\\notes.txt", "notes.txt", "", "File", 1.0, "Open");
+
+        Assert.AreEqual("Open", item.DisplayActions[0].Id);
+        Assert.AreEqual("Open", item.DisplayActions[0].Label);
+        Assert.AreEqual("Open", item.DisplayActions[0].Kind);
+    }
+
+    [TestMethod]
+    public void DisplayActions_WhenActionsProvided_PreservesActionKind()
+    {
+        var item = new SearchResultItem(
+            "file:C:\\Docs\\notes.txt",
+            "notes.txt",
+            "",
+            "File",
+            1.0,
+            "Open",
+            new[]
+            {
+                new ActionItem("copy-path", "Copy path", "CopyPath"),
+            });
+
+        Assert.AreEqual("CopyPath", item.DisplayActions[0].Kind);
+    }
 }

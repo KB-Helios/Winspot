@@ -13,7 +13,7 @@ public sealed record SearchResultItem(
 {
     public IReadOnlyList<ActionItem> DisplayActions => Actions is { Count: > 0 }
         ? Actions
-        : new[] { new ActionItem(PrimaryAction, PrimaryAction) };
+        : new[] { new ActionItem(PrimaryAction, PrimaryAction, PrimaryAction) };
 
     public string IconGlyph => Kind switch
     {
@@ -48,9 +48,11 @@ public sealed record SearchResultItem(
 
 public sealed record ActionItem(
     string Id,
-    string Label);
+    string Label,
+    string Kind);
 
 public sealed record ActionViewItem(
     string Id,
     string Label,
+    string Kind,
     bool IsFocused);

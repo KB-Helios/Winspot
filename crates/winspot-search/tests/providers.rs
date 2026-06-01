@@ -16,6 +16,19 @@ fn builtin_command_provider_exposes_calculator_and_terminal() {
 }
 
 #[test]
+fn builtin_command_provider_attaches_executable_action_descriptors() {
+    let results = BuiltinCommandProvider.collect_results();
+    let calculator = results
+        .iter()
+        .find(|result| result.id == "command:calculator")
+        .expect("calculator command exists");
+
+    assert!(calculator.actions.iter().any(|action| {
+        action.id == "run" && action.label == "Run" && action.kind == ActionKind::RunCommand
+    }));
+}
+
+#[test]
 fn start_menu_provider_discovers_shortcuts_from_configured_roots() {
     let root = std::env::temp_dir().join(format!("winspot-provider-test-{}", std::process::id()));
     let programs = root.join("Programs");
@@ -49,6 +62,24 @@ fn file_system_provider_discovers_files_and_folders_from_configured_roots() {
         results
             .iter()
             .any(|result| result.title == "Projects" && result.kind == SearchResultKind::Folder)
+    );
+
+    let file = results
+        .iter()
+        .find(|result| result.title == "Roadmap.md")
+        .expect("file result exists");
+    assert!(
+        file.actions
+            .iter()
+            .any(|action| { action.id == "open" && action.kind == ActionKind::Open })
+    );
+    assert!(file.actions.iter().any(|action| {
+        action.id == "open-containing-folder" && action.kind == ActionKind::OpenContainingFolder
+    }));
+    assert!(
+        file.actions
+            .iter()
+            .any(|action| { action.id == "copy-path" && action.kind == ActionKind::CopyPath })
     );
 
     fs::remove_dir_all(root).expect("cleanup test directory");
@@ -100,6 +131,10 @@ fn running_process_provider_parses_tasklist_csv() {
             && result.subtitle == "PID 1234 - 12,340 K"
             && result.kind == SearchResultKind::Process
             && result.primary_action == ActionKind::Copy
+            && result
+                .actions
+                .iter()
+                .any(|action| action.id == "kill-process" && action.kind == ActionKind::KillProcess)
     }));
     assert!(
         results

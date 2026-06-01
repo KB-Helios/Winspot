@@ -1,10 +1,13 @@
 #[cfg(windows)]
 mod windows_tests {
-    use std::{fs, time::Duration};
+    use std::{
+        fs,
+        time::{Duration, Instant},
+    };
 
     use tokio::{
         io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-        net::windows::named_pipe::ClientOptions,
+        net::windows::named_pipe::{ClientOptions, NamedPipeClient},
         time::timeout,
     };
     use winspot_core::{
@@ -16,6 +19,20 @@ mod windows_tests {
         engine::SearchEngine,
         usage::{UsageEvent, UsageStore},
     };
+
+    async fn open_pipe_with_retry(pipe_name: &str) -> NamedPipeClient {
+        let started = Instant::now();
+        loop {
+            match ClientOptions::new().open(pipe_name) {
+                Ok(client) => return client,
+                Err(error) if started.elapsed() < Duration::from_secs(2) => {
+                    let _ = error;
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                Err(error) => panic!("connect to test pipe {pipe_name}: {error}"),
+            }
+        }
+    }
 
     #[tokio::test]
     async fn daemon_streams_prebuilt_search_results() {
@@ -42,11 +59,7 @@ mod windows_tests {
             .expect("pipe server completes");
         });
 
-        tokio::time::sleep(Duration::from_millis(25)).await;
-
-        let client = ClientOptions::new()
-            .open(&pipe_name)
-            .expect("connect to test pipe");
+        let client = open_pipe_with_retry(&pipe_name).await;
         let mut client = BufReader::new(client);
 
         let request = IpcEnvelope::request(
@@ -110,11 +123,7 @@ mod windows_tests {
             .expect("pipe server completes");
         });
 
-        tokio::time::sleep(Duration::from_millis(25)).await;
-
-        let client = ClientOptions::new()
-            .open(&pipe_name)
-            .expect("connect to calculator test pipe");
+        let client = open_pipe_with_retry(&pipe_name).await;
         let mut client = BufReader::new(client);
 
         let request = IpcEnvelope::request(
@@ -174,11 +183,7 @@ mod windows_tests {
             .expect("pipe server completes");
         });
 
-        tokio::time::sleep(Duration::from_millis(25)).await;
-
-        let client = ClientOptions::new()
-            .open(&pipe_name)
-            .expect("connect to action test pipe");
+        let client = open_pipe_with_retry(&pipe_name).await;
         let mut client = BufReader::new(client);
 
         let request = IpcEnvelope::request(
@@ -242,11 +247,7 @@ mod windows_tests {
             .expect("pipe server completes");
         });
 
-        tokio::time::sleep(Duration::from_millis(25)).await;
-
-        let client = ClientOptions::new()
-            .open(&pipe_name)
-            .expect("connect to preview test pipe");
+        let client = open_pipe_with_retry(&pipe_name).await;
         let mut client = BufReader::new(client);
 
         let request = IpcEnvelope::request(
@@ -324,11 +325,7 @@ mod windows_tests {
             .expect("pipe server completes");
         });
 
-        tokio::time::sleep(Duration::from_millis(25)).await;
-
-        let client = ClientOptions::new()
-            .open(&pipe_name)
-            .expect("connect to payload test pipe");
+        let client = open_pipe_with_retry(&pipe_name).await;
         let mut client = BufReader::new(client);
         let oversized = format!("{}\n", "x".repeat(MAX_JSON_LINE_BYTES + 1));
         client
@@ -411,11 +408,7 @@ mod windows_tests {
             .expect("pipe server completes");
         });
 
-        tokio::time::sleep(Duration::from_millis(25)).await;
-
-        let client = ClientOptions::new()
-            .open(&pipe_name)
-            .expect("connect to proto-guard test pipe");
+        let client = open_pipe_with_retry(&pipe_name).await;
         let mut client = BufReader::new(client);
 
         // Client that only speaks a future protocol the daemon doesn't implement.
@@ -470,11 +463,7 @@ mod windows_tests {
             .expect("pipe server completes");
         });
 
-        tokio::time::sleep(Duration::from_millis(25)).await;
-
-        let client = ClientOptions::new()
-            .open(&pipe_name)
-            .expect("connect to open-guard test pipe");
+        let client = open_pipe_with_retry(&pipe_name).await;
         let mut client = BufReader::new(client);
 
         // A malicious client tries to make the launcher invoke an arbitrary

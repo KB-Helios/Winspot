@@ -57,12 +57,16 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
     // we exit quietly instead of leaving a redundant daemon running.
     let first = match create_secured_pipe(&config.pipe_name, true) {
         Ok(server) => server,
-        Err(error) => {
+        Err(error) if is_first_pipe_instance_collision(&error) => {
             eprintln!(
                 "winspot-daemon: another instance already owns {} ({error}); exiting",
                 config.pipe_name
             );
             return Ok(());
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("create first named pipe {}", config.pipe_name));
         }
     };
     if let Err(error) = serve_connection(first, &engine, &config).await {
@@ -393,4 +397,31 @@ fn current_unix_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+fn is_first_pipe_instance_collision(error: &std::io::Error) -> bool {
+    // CreateNamedPipeW reports ERROR_ACCESS_DENIED when
+    // FILE_FLAG_FIRST_PIPE_INSTANCE collides with an already-owned pipe name.
+    error.raw_os_error() == Some(5)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::*;
+
+    #[test]
+    fn first_pipe_instance_collision_recognizes_windows_access_denied() {
+        let error = io::Error::from_raw_os_error(5);
+
+        assert!(is_first_pipe_instance_collision(&error));
+    }
+
+    #[test]
+    fn first_pipe_instance_collision_rejects_unrelated_errors() {
+        let error = io::Error::from_raw_os_error(123);
+
+        assert!(!is_first_pipe_instance_collision(&error));
+    }
 }

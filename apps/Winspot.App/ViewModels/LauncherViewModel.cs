@@ -143,8 +143,9 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
         try
         {
-            StatusText = $"Running {SelectedResult.Title}";
-            var message = await _ipcClient.ExecuteAsync(SelectedResult, cancellationToken);
+            var action = SelectedActionForExecution(SelectedResult);
+            StatusText = $"Running {action.Label} on {SelectedResult.Title}";
+            var message = await _ipcClient.ExecuteAsync(SelectedResult, action, cancellationToken);
             if (!cancellationToken.IsCancellationRequested)
             {
                 StatusText = message;
@@ -177,6 +178,32 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         FocusedActionIndex = _selectedResultActions.Count > 0 ? 0 : -1;
     }
 
+    public void MoveActionRight()
+    {
+        if (_selectedResultActions.Count == 0)
+        {
+            FocusedActionIndex = -1;
+            return;
+        }
+
+        FocusedActionIndex = FocusedActionIndex < 0
+            ? 0
+            : Math.Clamp(FocusedActionIndex + 1, 0, _selectedResultActions.Count - 1);
+    }
+
+    public void MoveActionLeft()
+    {
+        if (_selectedResultActions.Count == 0)
+        {
+            FocusedActionIndex = -1;
+            return;
+        }
+
+        FocusedActionIndex = FocusedActionIndex < 0
+            ? 0
+            : Math.Clamp(FocusedActionIndex - 1, 0, _selectedResultActions.Count - 1);
+    }
+
     public void FocusResults()
     {
         FocusedActionIndex = -1;
@@ -203,8 +230,19 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
             .Select((action, index) => new ActionViewItem(
                 action.Id,
                 action.Label,
+                action.Kind,
                 index == FocusedActionIndex))
             .ToArray();
+    }
+
+    private ActionItem SelectedActionForExecution(SearchResultItem result)
+    {
+        if (FocusedActionIndex >= 0 && FocusedActionIndex < _selectedResultActions.Count)
+        {
+            return _selectedResultActions[FocusedActionIndex];
+        }
+
+        return new ActionItem(result.PrimaryAction, result.PrimaryAction, result.PrimaryAction);
     }
 
     private async Task RefreshAsync(string query)

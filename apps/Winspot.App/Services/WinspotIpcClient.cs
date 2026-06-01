@@ -20,6 +20,7 @@ public interface IWinspotIpcClient
 
     Task<string> ExecuteAsync(
         SearchResultItem result,
+        ActionItem action,
         CancellationToken cancellationToken);
 
     Task<PreviewItem?> GetPreviewAsync(
@@ -106,6 +107,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
 
     public async Task<string> ExecuteAsync(
         SearchResultItem result,
+        ActionItem action,
         CancellationToken cancellationToken)
     {
         await using var pipe = await ConnectAsync(cancellationToken);
@@ -126,7 +128,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
                         requestId,
                         result.Id,
                         result.Title,
-                        result.PrimaryAction),
+                        action.Kind),
                     JsonOptions)));
 
         var requestJson = JsonSerializer.Serialize(request, JsonOptions);
