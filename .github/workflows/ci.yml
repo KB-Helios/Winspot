@@ -37,7 +37,7 @@ jobs:
         run: cargo test --workspace --no-fail-fast
 
       - name: Run app tests
-        run: dotnet test apps\Winspot.App.Tests\Winspot.App.Tests.csproj -c Debug
+        run: dotnet test apps\Winspot.App.Tests\Winspot.App.Tests.csproj -c Debug -p:Platform=x64
 
       - name: Build app
-        run: dotnet build apps\Winspot.App\Winspot.App.csproj -c Debug
+        run: dotnet build apps\Winspot.App\Winspot.App.csproj -c Debug -p:Platform=x64

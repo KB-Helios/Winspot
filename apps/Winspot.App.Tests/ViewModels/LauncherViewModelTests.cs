@@ -188,7 +188,7 @@ public sealed class LauncherViewModelTests
     }
 
     [TestMethod]
-    public async Task AcceptSelection_ExecutesFocusedActionKind()
+    public async Task AcceptSelection_WhenActionChipIsFocused_ExecutesFocusedActionKind()
     {
         var client = new FakeWinspotIpcClient();
         var viewModel = new LauncherViewModel(client);

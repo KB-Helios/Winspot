@@ -157,21 +157,23 @@ public sealed partial class MainWindow : Window
 
         if (e.Key == Key.Right)
         {
-            if (ViewModel.FocusedActionIndex >= 0)
+            if (!ShouldHandleActionNavigationKey(e.Key, ViewModel.FocusedActionIndex))
             {
-                ViewModel.MoveActionRight();
-            }
-            else
-            {
-                ViewModel.FocusActions();
+                return;
             }
 
+            ViewModel.MoveActionRight();
             e.Handled = true;
             return;
         }
 
         if (e.Key == Key.Left)
         {
+            if (!ShouldHandleActionNavigationKey(e.Key, ViewModel.FocusedActionIndex))
+            {
+                return;
+            }
+
             if (ViewModel.FocusedActionIndex > 0)
             {
                 ViewModel.MoveActionLeft();
@@ -212,6 +214,9 @@ public sealed partial class MainWindow : Window
             Reveal();
         });
     }
+
+    public static bool ShouldHandleActionNavigationKey(Key key, int focusedActionIndex) =>
+        key is Key.Left or Key.Right && focusedActionIndex >= 0;
 
     private void ApplyResponsiveBounds()
     {
