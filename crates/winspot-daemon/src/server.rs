@@ -11,6 +11,8 @@ use tokio::{
     net::windows::named_pipe::{NamedPipeServer, ServerOptions},
 };
 use winspot_actions::{ActionExecutor, ActionPolicy};
+
+use crate::pipe_security::PipeSecurity;
 use winspot_core::{
     BackendError, HelloAccepted, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
     MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PreviewChunk, PreviewReady, PreviewRequested,
@@ -53,10 +55,7 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
     // Reserve the first pipe instance as a single-instance guard: if another
     // daemon already owns this pipe name, `first_pipe_instance(true)` fails and
     // we exit quietly instead of leaving a redundant daemon running.
-    let first = match ServerOptions::new()
-        .first_pipe_instance(true)
-        .create(&config.pipe_name)
-    {
+    let first = match create_secured_pipe(&config.pipe_name, true) {
         Ok(server) => server,
         Err(error) => {
             eprintln!(
@@ -71,9 +70,7 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
     }
 
     loop {
-        let server = ServerOptions::new()
-            .first_pipe_instance(false)
-            .create(&config.pipe_name)
+        let server = create_secured_pipe(&config.pipe_name, false)
             .with_context(|| format!("create named pipe {}", config.pipe_name))?;
         // A single client connection failing (abrupt disconnect, broken pipe,
         // malformed payload) must not take down the daemon: log it and keep
@@ -81,6 +78,29 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
         if let Err(error) = serve_connection(server, &engine, &config).await {
             eprintln!("winspot-daemon: connection error: {error:?}");
         }
+    }
+}
+
+/// Creates one named-pipe instance whose DACL is restricted to the current user
+/// (and SYSTEM) and that rejects remote clients.
+///
+/// The security descriptor is built and dropped entirely within this synchronous
+/// function: the kernel copies it into the pipe object at creation, so it does
+/// not need to outlive the call (and never crosses an `.await`, keeping the
+/// async server `Send`).
+fn create_secured_pipe(name: &str, first_instance: bool) -> std::io::Result<NamedPipeServer> {
+    let security = PipeSecurity::current_user_only()?;
+    // SAFETY: `security` owns the SECURITY_ATTRIBUTES (and the descriptor it
+    // points at) for the whole call, so the raw pointer stays valid until
+    // `create_with_security_attributes_raw` returns.
+    unsafe {
+        ServerOptions::new()
+            .first_pipe_instance(first_instance)
+            .reject_remote_clients(true)
+            .create_with_security_attributes_raw(
+                name,
+                security.as_attributes_ptr() as *mut std::ffi::c_void,
+            )
     }
 }
 
@@ -104,9 +124,7 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
 }
 
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
-    let server = ServerOptions::new()
-        .first_pipe_instance(false)
-        .create(&config.pipe_name)
+    let server = create_secured_pipe(&config.pipe_name, false)
         .with_context(|| format!("create named pipe {}", config.pipe_name))?;
     serve_connection(server, engine, &config).await
 }
@@ -166,8 +184,7 @@ fn handle_line(
         IpcPayload::Hello(hello) => {
             let version = hello
                 .max_protocol_version
-                .min(MAX_PROTOCOL_VERSION)
-                .max(MIN_PROTOCOL_VERSION);
+                .clamp(MIN_PROTOCOL_VERSION, MAX_PROTOCOL_VERSION);
             Ok((
                 vec![IpcEnvelope::request(
                     request_id,
@@ -336,12 +353,11 @@ fn default_search_providers() -> Vec<Arc<dyn RefreshableProvider>> {
 }
 
 fn default_usage_log_path() -> Option<PathBuf> {
-    if let Ok(executable) = env::current_exe() {
-        if let Some(directory) = executable.parent() {
-            if directory.join("Winspot.portable").exists() {
-                return Some(directory.join("data").join("usage-events.jsonl"));
-            }
-        }
+    if let Ok(executable) = env::current_exe()
+        && let Some(directory) = executable.parent()
+        && directory.join("Winspot.portable").exists()
+    {
+        return Some(directory.join("data").join("usage-events.jsonl"));
     }
 
     env::var("LOCALAPPDATA")

@@ -126,19 +126,18 @@ fn preview_file(result: &SearchResult) -> PreviewPayload {
         };
     }
 
-    if fs::metadata(&path)
+    let within_text_limit = fs::metadata(path)
         .map(|metadata| metadata.len() <= TEXT_PREVIEW_MAX_BYTES as u64)
-        .unwrap_or(false)
+        .unwrap_or(false);
+    if within_text_limit
+        && let Ok(bytes) = fs::read(path)
+        && let Ok(text) = String::from_utf8(bytes)
     {
-        if let Ok(bytes) = fs::read(&path) {
-            if let Ok(text) = String::from_utf8(bytes) {
-                return PreviewPayload::Text {
-                    title: result.title.clone(),
-                    language: extension_to_language(&extension),
-                    body: text.lines().take(80).collect::<Vec<_>>().join("\n"),
-                };
-            }
-        }
+        return PreviewPayload::Text {
+            title: result.title.clone(),
+            language: extension_to_language(&extension),
+            body: text.lines().take(80).collect::<Vec<_>>().join("\n"),
+        };
     }
 
     PreviewPayload::Metadata {

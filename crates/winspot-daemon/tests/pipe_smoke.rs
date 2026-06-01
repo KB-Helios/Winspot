@@ -393,4 +393,70 @@ mod windows_tests {
             result.title == "Windows Update" && result.kind == SearchResultKind::Setting
         }));
     }
+
+    #[tokio::test]
+    async fn daemon_refuses_open_action_with_disallowed_scheme() {
+        let pipe_name = format!(r"\\.\pipe\winspot-open-guard-{}", std::process::id());
+        let server_name = pipe_name.clone();
+        let server = tokio::spawn(async move {
+            let engine = SearchEngine::from_results(Vec::new());
+            serve_pipe_once(
+                PipeConfig {
+                    pipe_name: server_name,
+                    usage_log_path: None,
+                },
+                &engine,
+            )
+            .await
+            .expect("pipe server completes");
+        });
+
+        tokio::time::sleep(Duration::from_millis(25)).await;
+
+        let client = ClientOptions::new()
+            .open(&pipe_name)
+            .expect("connect to open-guard test pipe");
+        let mut client = BufReader::new(client);
+
+        // A malicious client tries to make the launcher invoke an arbitrary
+        // protocol handler via the shell.
+        let request = IpcEnvelope::request(
+            "open-1",
+            IpcPayload::ActionRequested(ActionRequested {
+                action_id: "open-1".to_string(),
+                result_id: "evil:javascript:alert(1)".to_string(),
+                title: "Definitely Safe".to_string(),
+                primary_action: ActionKind::Open,
+            }),
+        );
+        let mut request_json = serde_json::to_string(&request).expect("serialize open request");
+        request_json.push('\n');
+        client
+            .get_mut()
+            .write_all(request_json.as_bytes())
+            .await
+            .expect("write open request");
+
+        let mut line = String::new();
+        timeout(Duration::from_secs(2), client.read_line(&mut line))
+            .await
+            .expect("open response before timeout")
+            .expect("read open response");
+
+        let response: IpcEnvelope =
+            serde_json::from_str(line.trim()).expect("decode open response");
+        match response.payload {
+            IpcPayload::ActionCompleted(completed) => {
+                assert!(!completed.succeeded, "disallowed scheme must be refused");
+                assert!(
+                    completed.message.contains("refused to open"),
+                    "unexpected message: {}",
+                    completed.message
+                );
+            }
+            other => panic!("expected ActionCompleted, got {other:?}"),
+        }
+
+        server.await.expect("server task joins");
+    }
 }

@@ -22,6 +22,34 @@ fn executor_denies_clipboard_action_without_capability() {
 }
 
 #[test]
+fn open_action_refuses_disallowed_uri_scheme() {
+    let executor = ActionExecutor::new(ActionPolicy::allow_all_local());
+    let completed = executor.execute(ActionRequested {
+        action_id: "open-1".to_string(),
+        result_id: "evil:javascript:alert(1)".to_string(),
+        title: "Definitely Safe".to_string(),
+        primary_action: ActionKind::Open,
+    });
+
+    assert!(!completed.succeeded);
+    assert!(completed.message.contains("refused to open"));
+}
+
+#[test]
+fn open_action_refuses_nonexistent_path() {
+    let executor = ActionExecutor::new(ActionPolicy::allow_all_local());
+    let completed = executor.execute(ActionRequested {
+        action_id: "open-2".to_string(),
+        result_id: "file:C:\\winspot\\definitely\\missing.txt".to_string(),
+        title: "Missing".to_string(),
+        primary_action: ActionKind::Open,
+    });
+
+    assert!(!completed.succeeded);
+    assert!(completed.message.contains("refused to open"));
+}
+
+#[test]
 fn policy_allows_explicit_capabilities() {
     let policy = ActionPolicy::with_allowed([ActionCapability::ClipboardWrite]);
 

@@ -365,6 +365,7 @@ dependencies = [
  "clipboard-win",
  "serde_json",
  "tokio",
+ "windows-sys",
  "winspot-actions",
  "winspot-core",
  "winspot-preview",
