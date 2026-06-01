@@ -6,27 +6,27 @@
     xmlns:vm="using:Winspot_App.ViewModels"
     Title="Winspot Settings"
     Width="460"
-    Height="430"
-    Background="#FF0F141D"
+    Height="470"
+    Background="{DynamicResource SurfaceBrush}"
     CanResize="False"
     WindowStartupLocation="CenterScreen">
     <Window.Styles>
         <Style Selector="TextBlock.section-title">
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="#FFE8EDF7" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="Margin" Value="0,0,0,8" />
         </Style>
         <Style Selector="CheckBox">
-            <Setter Property="Foreground" Value="#FFD4DBE8" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         </Style>
         <Style Selector="TextBlock.hint">
-            <Setter Property="Foreground" Value="#FF8792A3" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
             <Setter Property="FontSize" Value="11" />
         </Style>
         <Style Selector="Border.card">
-            <Setter Property="Background" Value="#FF141B26" />
-            <Setter Property="BorderBrush" Value="#1AFFFFFF" />
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderInnerBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="16" />
@@ -37,7 +37,7 @@
         <TextBlock
             FontSize="20"
             FontWeight="SemiBold"
-            Foreground="#FFE8EDF7"
+            Foreground="{DynamicResource TextPrimaryBrush}"
             Text="Settings" />
 
         <StackPanel Grid.Row="1" Spacing="16">
@@ -51,7 +51,7 @@
                         <CheckBox Content="Win" IsChecked="{Binding UseWin}" />
                     </WrapPanel>
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" VerticalAlignment="Center">
-                        <TextBlock VerticalAlignment="Center" Foreground="#FFD4DBE8" Text="Key" />
+                        <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" Text="Key" />
                         <TextBox
                             Grid.Column="1"
                             AutomationProperties.AutomationId="SettingsHotkeyKey"
@@ -68,12 +68,13 @@
                     <TextBlock Classes="section-title" Text="General" />
                     <CheckBox Content="Launch Winspot when I sign in" IsChecked="{Binding LaunchOnStartup}" />
                     <CheckBox Content="Show icon in the system tray" IsChecked="{Binding ShowTrayIcon}" />
+                    <CheckBox Content="Reduce motion (minimize animations)" IsChecked="{Binding ReduceMotion}" />
                 </StackPanel>
             </Border>
 
             <TextBlock
                 Classes="hint"
-                Foreground="#FF72F1D6"
+                Foreground="{DynamicResource AccentBrush}"
                 Text="{Binding StatusMessage}" />
         </StackPanel>
 
@@ -91,8 +92,8 @@
                 x:Name="SaveButton"
                 Click="OnSaveClick"
                 Content="Save"
-                Foreground="#FF06140F"
-                Background="#FF72F1D6"
+                Foreground="{DynamicResource AccentForegroundBrush}"
+                Background="{DynamicResource AccentBrush}"
                 MinWidth="92" />
         </StackPanel>
     </Grid>

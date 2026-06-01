@@ -9,16 +9,27 @@ namespace Winspot_App.Tests.Windowing;
 public sealed class LauncherVisualStyleTests
 {
     [TestMethod]
-    public void MainWindow_UsesCalmGraphiteVisualTokens()
+    public void Tokens_UseCalmGraphiteVisualTokens()
+    {
+        // Colors are centralized in the design-token dictionary, so the calm
+        // graphite palette is asserted there rather than inline in the view.
+        var tokens = File.ReadAllText(FindTokensAxaml());
+
+        StringAssert.Contains(tokens, "#FF111620");
+        StringAssert.Contains(tokens, "#FF1A2230");
+        StringAssert.Contains(tokens, "#FFE8EDF7");
+        StringAssert.Contains(tokens, "#FFAEB7C6");
+        Assert.IsFalse(tokens.Contains("#B8F5D8"), "The Calm Graphite direction should avoid bright teal as a dominant UI accent.");
+        Assert.IsFalse(tokens.Contains("#285E55"), "Selected rows should use neutral graphite, not green/teal selection blocks.");
+    }
+
+    [TestMethod]
+    public void MainWindow_ReferencesCentralizedTokens()
     {
         var axaml = File.ReadAllText(FindMainWindowAxaml());
 
-        StringAssert.Contains(axaml, "#FF111620");
-        StringAssert.Contains(axaml, "#FF1A2230");
-        StringAssert.Contains(axaml, "#FFE8EDF7");
-        StringAssert.Contains(axaml, "#FFAEB7C6");
-        Assert.IsFalse(axaml.Contains("#B8F5D8"), "The Calm Graphite direction should avoid bright teal as a dominant UI accent.");
-        Assert.IsFalse(axaml.Contains("#285E55"), "Selected rows should use neutral graphite, not green/teal selection blocks.");
+        StringAssert.Contains(axaml, "{DynamicResource TextPrimaryBrush}");
+        StringAssert.Contains(axaml, "{DynamicResource SelectionBrush}");
     }
 
     [TestMethod]
@@ -33,12 +44,18 @@ public sealed class LauncherVisualStyleTests
         Assert.IsFalse(axaml.Contains("<Setter Property=\"BorderBrush\" Value=\"#1FFFFFFF\" />"), "Compact search should not have a second border inside the spotlight surface.");
     }
 
-    private static string FindMainWindowAxaml()
+    private static string FindMainWindowAxaml() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "MainWindow.axaml"));
+
+    private static string FindTokensAxaml() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "Themes", "Tokens.axaml"));
+
+    private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null)
         {
-            var path = Path.Combine(directory.FullName, "apps", "Winspot.App", "MainWindow.axaml");
+            var path = Path.Combine(directory.FullName, relativePath);
             if (File.Exists(path))
             {
                 return path;
@@ -47,7 +64,7 @@ public sealed class LauncherVisualStyleTests
             directory = directory.Parent;
         }
 
-        Assert.Fail("Could not locate apps/Winspot.App/MainWindow.axaml from the test output directory.");
+        Assert.Fail($"Could not locate {relativePath} from the test output directory.");
         return string.Empty;
     }
 }

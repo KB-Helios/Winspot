@@ -50,6 +50,7 @@ public sealed class LauncherSettingsStoreTests
             Hotkey = new HotkeyBinding { Key = "P", Modifiers = new List<string> { "Win" } },
             LaunchOnStartup = true,
             ShowTrayIcon = false,
+            ReduceMotion = true,
         });
 
         var reloaded = store.Load();
@@ -58,6 +59,7 @@ public sealed class LauncherSettingsStoreTests
         CollectionAssert.AreEquivalent(new List<string> { "Win" }, reloaded.Hotkey.Modifiers);
         Assert.IsTrue(reloaded.LaunchOnStartup);
         Assert.IsFalse(reloaded.ShowTrayIcon);
+        Assert.IsTrue(reloaded.ReduceMotion);
     }
 
     [TestMethod]
