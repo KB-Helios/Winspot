@@ -148,16 +148,41 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (e.Key is Key.Tab or Key.Right)
+        if (e.Key == Key.Tab)
         {
             ViewModel.FocusActions();
             e.Handled = true;
             return;
         }
 
+        if (e.Key == Key.Right)
+        {
+            if (!ShouldHandleActionNavigationKey(e.Key, ViewModel.FocusedActionIndex))
+            {
+                return;
+            }
+
+            ViewModel.MoveActionRight();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Left)
         {
-            ViewModel.FocusResults();
+            if (!ShouldHandleActionNavigationKey(e.Key, ViewModel.FocusedActionIndex))
+            {
+                return;
+            }
+
+            if (ViewModel.FocusedActionIndex > 0)
+            {
+                ViewModel.MoveActionLeft();
+            }
+            else
+            {
+                ViewModel.FocusResults();
+            }
+
             e.Handled = true;
             return;
         }
@@ -189,6 +214,9 @@ public sealed partial class MainWindow : Window
             Reveal();
         });
     }
+
+    public static bool ShouldHandleActionNavigationKey(Key key, int focusedActionIndex) =>
+        key is Key.Left or Key.Right && focusedActionIndex >= 0;
 
     private void ApplyResponsiveBounds()
     {

@@ -57,12 +57,16 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
     // we exit quietly instead of leaving a redundant daemon running.
     let first = match create_secured_pipe(&config.pipe_name, true) {
         Ok(server) => server,
-        Err(error) => {
+        Err(error) if is_first_pipe_instance_collision(&error) => {
             eprintln!(
                 "winspot-daemon: another instance already owns {} ({error}); exiting",
                 config.pipe_name
             );
             return Ok(());
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("create first named pipe {}", config.pipe_name));
         }
     };
     if let Err(error) = serve_connection(first, &engine, &config).await {
@@ -182,9 +186,32 @@ fn handle_line(
 
     match envelope.payload {
         IpcPayload::Hello(hello) => {
-            let version = hello
-                .max_protocol_version
-                .clamp(MIN_PROTOCOL_VERSION, MAX_PROTOCOL_VERSION);
+            // Negotiate the highest version both sides support. If the client's
+            // advertised range doesn't overlap ours, refuse instead of silently
+            // "accepting" a version the daemon doesn't actually implement.
+            if hello.max_protocol_version < MIN_PROTOCOL_VERSION
+                || hello.min_protocol_version > MAX_PROTOCOL_VERSION
+            {
+                return Ok((
+                    vec![IpcEnvelope::request(
+                        request_id,
+                        IpcPayload::Error(BackendError {
+                            code: "protocol_unsupported".to_string(),
+                            message: format!(
+                                "client supports protocol {}-{}, daemon supports {}-{}",
+                                hello.min_protocol_version,
+                                hello.max_protocol_version,
+                                MIN_PROTOCOL_VERSION,
+                                MAX_PROTOCOL_VERSION
+                            ),
+                            retryable: false,
+                        }),
+                    )],
+                    true,
+                ));
+            }
+
+            let version = hello.max_protocol_version.min(MAX_PROTOCOL_VERSION);
             Ok((
                 vec![IpcEnvelope::request(
                     request_id,
@@ -370,4 +397,31 @@ fn current_unix_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+fn is_first_pipe_instance_collision(error: &std::io::Error) -> bool {
+    // CreateNamedPipeW reports ERROR_ACCESS_DENIED when
+    // FILE_FLAG_FIRST_PIPE_INSTANCE collides with an already-owned pipe name.
+    error.raw_os_error() == Some(5)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::*;
+
+    #[test]
+    fn first_pipe_instance_collision_recognizes_windows_access_denied() {
+        let error = io::Error::from_raw_os_error(5);
+
+        assert!(is_first_pipe_instance_collision(&error));
+    }
+
+    #[test]
+    fn first_pipe_instance_collision_rejects_unrelated_errors() {
+        let error = io::Error::from_raw_os_error(123);
+
+        assert!(!is_first_pipe_instance_collision(&error));
+    }
 }

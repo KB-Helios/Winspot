@@ -50,6 +50,66 @@ fn open_action_refuses_nonexistent_path() {
 }
 
 #[test]
+fn plugin_command_refuses_non_executable_plugin() {
+    // `clipboard` is a search-only built-in plugin: it must report an honest
+    // failure instead of the previous fake "Ran plugin action" success.
+    let executor = ActionExecutor::new(ActionPolicy::allow_all_local());
+    let completed = executor.execute(ActionRequested {
+        action_id: "plugin-1".to_string(),
+        result_id: "plugin:clipboard".to_string(),
+        title: "Clipboard".to_string(),
+        primary_action: ActionKind::PluginCommand,
+    });
+
+    assert!(!completed.succeeded);
+    assert!(completed.message.contains("no executable command"));
+}
+
+#[test]
+fn plugin_command_refuses_malformed_id() {
+    let executor = ActionExecutor::new(ActionPolicy::allow_all_local());
+    let completed = executor.execute(ActionRequested {
+        action_id: "plugin-2".to_string(),
+        result_id: "plugin:".to_string(),
+        title: "Mystery".to_string(),
+        primary_action: ActionKind::PluginCommand,
+    });
+
+    assert!(!completed.succeeded);
+    assert!(completed.message.contains("malformed plugin id"));
+}
+
+#[test]
+fn kill_process_refuses_id_without_pid() {
+    // Without a parseable PID the daemon must refuse rather than report the old
+    // "Process action queued" success that never killed anything.
+    let executor = ActionExecutor::new(ActionPolicy::allow_all_local());
+    let completed = executor.execute(ActionRequested {
+        action_id: "kill-1".to_string(),
+        result_id: "process:not-a-pid:explorer.exe".to_string(),
+        title: "explorer.exe".to_string(),
+        primary_action: ActionKind::KillProcess,
+    });
+
+    assert!(!completed.succeeded);
+    assert!(completed.message.contains("missing process id"));
+}
+
+#[test]
+fn kill_process_denied_without_capability() {
+    let executor = ActionExecutor::new(ActionPolicy::with_allowed([]));
+    let completed = executor.execute(ActionRequested {
+        action_id: "kill-2".to_string(),
+        result_id: "process:1234:explorer.exe".to_string(),
+        title: "explorer.exe".to_string(),
+        primary_action: ActionKind::KillProcess,
+    });
+
+    assert!(!completed.succeeded);
+    assert!(completed.message.contains("ProcessExecution"));
+}
+
+#[test]
 fn policy_allows_explicit_capabilities() {
     let policy = ActionPolicy::with_allowed([ActionCapability::ClipboardWrite]);
 

@@ -5,7 +5,9 @@ use std::{
     sync::Mutex,
 };
 
-use winspot_core::{ActionKind, SearchResult, SearchResultKind};
+use winspot_core::{
+    ActionCapability, ActionDescriptor, ActionKind, SearchResult, SearchResultKind,
+};
 use winspot_index::IndexStore;
 use winspot_plugins::built_in_plugin_manifests;
 
@@ -36,6 +38,116 @@ pub trait DynamicSearchProvider: Send + Sync {
 const DEFAULT_FILE_SYSTEM_MAX_DEPTH: usize = 2;
 const DEFAULT_FILE_SYSTEM_MAX_ENTRIES: usize = 500;
 const START_MENU_MAX_DEPTH: usize = 10;
+
+fn action_descriptor(
+    id: &str,
+    label: &str,
+    kind: ActionKind,
+    capabilities: Vec<ActionCapability>,
+) -> ActionDescriptor {
+    ActionDescriptor {
+        id: id.to_string(),
+        label: label.to_string(),
+        kind,
+        capabilities,
+    }
+}
+
+fn open_action() -> ActionDescriptor {
+    action_descriptor(
+        "open",
+        "Open",
+        ActionKind::Open,
+        vec![ActionCapability::ShellExecution],
+    )
+}
+
+fn copy_action() -> ActionDescriptor {
+    action_descriptor(
+        "copy",
+        "Copy",
+        ActionKind::Copy,
+        vec![ActionCapability::ClipboardWrite],
+    )
+}
+
+fn run_action() -> ActionDescriptor {
+    action_descriptor(
+        "run",
+        "Run",
+        ActionKind::RunCommand,
+        vec![ActionCapability::ProcessExecution],
+    )
+}
+
+fn plugin_command_action() -> ActionDescriptor {
+    action_descriptor(
+        "run-plugin",
+        "Run",
+        ActionKind::PluginCommand,
+        vec![ActionCapability::PluginExecution],
+    )
+}
+
+fn copy_path_action() -> ActionDescriptor {
+    action_descriptor(
+        "copy-path",
+        "Copy path",
+        ActionKind::CopyPath,
+        vec![ActionCapability::ClipboardWrite],
+    )
+}
+
+fn open_containing_folder_action() -> ActionDescriptor {
+    action_descriptor(
+        "open-containing-folder",
+        "Open folder",
+        ActionKind::OpenContainingFolder,
+        vec![ActionCapability::ShellExecution],
+    )
+}
+
+fn kill_process_action() -> ActionDescriptor {
+    action_descriptor(
+        "kill-process",
+        "End process",
+        ActionKind::KillProcess,
+        vec![ActionCapability::ProcessExecution],
+    )
+}
+
+fn file_actions() -> Vec<ActionDescriptor> {
+    vec![
+        open_action(),
+        open_containing_folder_action(),
+        copy_path_action(),
+    ]
+}
+
+fn folder_actions() -> Vec<ActionDescriptor> {
+    vec![open_action(), copy_path_action()]
+}
+
+fn process_actions() -> Vec<ActionDescriptor> {
+    vec![copy_action(), kill_process_action()]
+}
+
+fn executable_plugin_actions(plugin_id: &str) -> Vec<ActionDescriptor> {
+    if matches!(plugin_id, "calculator" | "terminal") {
+        vec![plugin_command_action()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn system32_executable_path(file_name: &str) -> PathBuf {
+    env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+        .join("System32")
+        .join(file_name)
+}
 
 const WINDOWS_SETTINGS: &[WindowsSetting] = &[
     WindowsSetting {
@@ -229,7 +341,7 @@ impl SearchProvider for BuiltinCommandProvider {
                 kind: SearchResultKind::Command,
                 score: 0.0,
                 primary_action: ActionKind::RunCommand,
-                actions: Vec::new(),
+                actions: vec![run_action()],
                 source: Some("builtin".to_string()),
                 icon_hint: None,
             },
@@ -240,7 +352,7 @@ impl SearchProvider for BuiltinCommandProvider {
                 kind: SearchResultKind::Command,
                 score: 0.0,
                 primary_action: ActionKind::RunCommand,
-                actions: Vec::new(),
+                actions: vec![run_action()],
                 source: Some("builtin".to_string()),
                 icon_hint: None,
             },
@@ -268,7 +380,7 @@ impl SearchProvider for WindowsSettingsProvider {
                 kind: SearchResultKind::Setting,
                 score: 0.0,
                 primary_action: ActionKind::Open,
-                actions: Vec::new(),
+                actions: vec![open_action()],
                 source: Some("settings".to_string()),
                 icon_hint: None,
             })
@@ -370,7 +482,7 @@ impl SearchProvider for RunningProcessProvider {
             return Vec::new();
         }
 
-        let Ok(output) = Command::new("tasklist")
+        let Ok(output) = Command::new(system32_executable_path("tasklist.exe"))
             .args(["/FO", "CSV", "/NH"])
             .output()
         else {
@@ -446,7 +558,7 @@ impl SearchProvider for BrowserHistoryProvider {
                     kind: SearchResultKind::BrowserHistory,
                     score: 0.0,
                     primary_action: ActionKind::Open,
-                    actions: Vec::new(),
+                    actions: vec![open_action()],
                     source: Some("browser-history".to_string()),
                     icon_hint: None,
                 });
@@ -474,7 +586,7 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
                 kind: SearchResultKind::Plugin,
                 score: 0.0,
                 primary_action: ActionKind::PluginCommand,
-                actions: Vec::new(),
+                actions: executable_plugin_actions(&manifest.id),
                 source: Some("plugin".to_string()),
                 icon_hint: None,
             })
@@ -499,7 +611,7 @@ impl DynamicSearchProvider for CalculatorProvider {
             kind: SearchResultKind::Command,
             score: 0.0,
             primary_action: ActionKind::Copy,
-            actions: Vec::new(),
+            actions: vec![copy_action()],
             source: Some("calculator".to_string()),
             icon_hint: None,
         }]
@@ -532,7 +644,7 @@ impl DynamicSearchProvider for UnitConversionProvider {
             kind: SearchResultKind::Command,
             score: 0.0,
             primary_action: ActionKind::Copy,
-            actions: Vec::new(),
+            actions: vec![copy_action()],
             source: Some("conversion".to_string()),
             icon_hint: None,
         }]
@@ -593,7 +705,7 @@ fn collect_shortcuts(root: &Path, depth: usize, results: &mut Vec<SearchResult>)
             kind: SearchResultKind::App,
             score: 0.0,
             primary_action: ActionKind::Open,
-            actions: Vec::new(),
+            actions: vec![open_action(), copy_path_action()],
             source: Some("start-menu".to_string()),
             icon_hint: None,
         });
@@ -885,7 +997,7 @@ fn collect_file_system_entries(
                 kind: SearchResultKind::Folder,
                 score: 0.0,
                 primary_action: ActionKind::Open,
-                actions: Vec::new(),
+                actions: folder_actions(),
                 source: Some("filesystem".to_string()),
                 icon_hint: None,
             });
@@ -901,7 +1013,7 @@ fn collect_file_system_entries(
                 kind: SearchResultKind::File,
                 score: 0.0,
                 primary_action: ActionKind::Open,
-                actions: Vec::new(),
+                actions: file_actions(),
                 source: Some("filesystem".to_string()),
                 icon_hint: None,
             });
@@ -934,7 +1046,7 @@ fn parse_process_line(line: &str) -> Option<SearchResult> {
         kind: SearchResultKind::Process,
         score: 0.0,
         primary_action: ActionKind::Copy,
-        actions: Vec::new(),
+        actions: process_actions(),
         source: Some("process".to_string()),
         icon_hint: None,
     })

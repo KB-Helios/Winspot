@@ -4,7 +4,9 @@ use crate::search::{ActionKind, SearchResult};
 
 pub const PROTOCOL_VERSION: u16 = 1;
 pub const MIN_PROTOCOL_VERSION: u16 = 1;
-pub const MAX_PROTOCOL_VERSION: u16 = 2;
+// The daemon only implements v1 semantics today, so advertise exactly what it
+// supports instead of claiming a v2 it never negotiates.
+pub const MAX_PROTOCOL_VERSION: u16 = 1;
 pub const MAX_JSON_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
