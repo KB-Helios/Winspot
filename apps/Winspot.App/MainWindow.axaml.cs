@@ -21,7 +21,6 @@ public sealed partial class MainWindow : Window
     private static readonly CubicEaseOut RevealEasing = new();
 
     private readonly Transitions? _resultsHostTransitions;
-    private CancellationTokenSource? _boundsAnimationCancellation;
     private GlobalHotkeyService? _hotkeyService;
     private HotkeyBinding _hotkey;
 
@@ -84,7 +83,7 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    public void ApplyMotionProfile(MotionProfile motionProfile)
+    internal void ApplyMotionProfile(MotionProfile motionProfile)
     {
         MotionSettings.Profile = motionProfile;
         ResultsHost.Transitions = MotionSettings.ReduceMotion ? null : _resultsHostTransitions;
@@ -126,8 +125,6 @@ public sealed partial class MainWindow : Window
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
-        _boundsAnimationCancellation?.Cancel();
-        _boundsAnimationCancellation?.Dispose();
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         if (_hotkeyService is not null)
         {
@@ -308,11 +305,6 @@ public sealed partial class MainWindow : Window
 
     private Task AnimateBoundsAsync(Rect targetBounds, double scaling)
     {
-        var previous = _boundsAnimationCancellation;
-        previous?.Cancel();
-        previous?.Dispose();
-        _boundsAnimationCancellation = null;
-
         var targetPosition = LauncherWindowLayout.ToPixels(targetBounds, scaling);
         Width = targetBounds.Width;
         Height = targetBounds.Height;

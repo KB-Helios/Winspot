@@ -40,19 +40,30 @@ public sealed class LauncherSettingsStore
             }
 
             var json = File.ReadAllText(_settingsPath);
-            var settings = NormalizeSettings(JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings());
-            if (!NeedsHotkeyRepair(settings.Hotkey))
+            var shouldPersistRepair = false;
+            LauncherSettings settings;
+            try
             {
-                return settings;
+                settings = NormalizeSettings(JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings());
+            }
+            catch (JsonException)
+            {
+                settings = RecoverSettingsFromJson(json) ?? new LauncherSettings();
+                shouldPersistRepair = true;
             }
 
-            var repaired = RepairHotkey(settings);
-            TrySaveRepair(repaired);
-            return repaired;
-        }
-        catch (JsonException)
-        {
-            return new LauncherSettings();
+            if (NeedsHotkeyRepair(settings.Hotkey))
+            {
+                settings = RepairHotkey(settings);
+                shouldPersistRepair = true;
+            }
+
+            if (shouldPersistRepair)
+            {
+                TrySaveRepair(settings);
+            }
+
+            return settings;
         }
         catch (IOException)
         {
@@ -114,6 +125,93 @@ public sealed class LauncherSettingsStore
             ThemeMode = settings.ThemeMode,
             MotionProfile = motionProfile,
         };
+    }
+
+    private static LauncherSettings? RecoverSettingsFromJson(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            var defaults = new LauncherSettings();
+            var recovered = new LauncherSettings
+            {
+                Hotkey = ReadHotkey(root) ?? defaults.Hotkey,
+                LaunchOnStartup = ReadBoolean(root, "launchOnStartup", defaults.LaunchOnStartup),
+                ShowTrayIcon = ReadBoolean(root, "showTrayIcon", defaults.ShowTrayIcon),
+                ReduceMotion = ReadBoolean(root, "reduceMotion", defaults.ReduceMotion),
+                ThemeMode = ReadEnum(root, "themeMode", defaults.ThemeMode),
+                MotionProfile = ReadEnum(root, "motionProfile", defaults.MotionProfile),
+            };
+
+            return NormalizeSettings(recovered);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static HotkeyBinding? ReadHotkey(JsonElement root)
+    {
+        if (!root.TryGetProperty("hotkey", out var hotkey) || hotkey.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var key = hotkey.TryGetProperty("key", out var keyElement) && keyElement.ValueKind == JsonValueKind.String
+            ? keyElement.GetString() ?? string.Empty
+            : string.Empty;
+        var modifiers = new List<string>();
+        if (hotkey.TryGetProperty("modifiers", out var modifiersElement)
+            && modifiersElement.ValueKind == JsonValueKind.Array)
+        {
+            modifiers.AddRange(
+                modifiersElement
+                    .EnumerateArray()
+                    .Where(element => element.ValueKind == JsonValueKind.String)
+                    .Select(element => element.GetString() ?? string.Empty));
+        }
+
+        return new HotkeyBinding
+        {
+            Key = key,
+            Modifiers = modifiers,
+        };
+    }
+
+    private static bool ReadBoolean(JsonElement root, string propertyName, bool fallback) =>
+        root.TryGetProperty(propertyName, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? value.GetBoolean()
+            : fallback;
+
+    private static TEnum ReadEnum<TEnum>(JsonElement root, string propertyName, TEnum fallback)
+        where TEnum : struct, Enum
+    {
+        if (!root.TryGetProperty(propertyName, out var value))
+        {
+            return fallback;
+        }
+
+        if (value.ValueKind == JsonValueKind.String
+            && Enum.TryParse<TEnum>(value.GetString(), ignoreCase: true, out var parsed))
+        {
+            return parsed;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var numeric)
+            && Enum.IsDefined(typeof(TEnum), numeric))
+        {
+            return (TEnum)Enum.ToObject(typeof(TEnum), numeric);
+        }
+
+        return fallback;
     }
 
     private void TrySaveRepair(LauncherSettings repaired)

@@ -35,12 +35,6 @@ public static class AppPaths
             return localAppData;
         }
 
-        var userProfile = Environment.GetEnvironmentVariable("USERPROFILE");
-        if (!string.IsNullOrWhiteSpace(userProfile))
-        {
-            return Path.Combine(userProfile, "AppData", "Local");
-        }
-
         return Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     }
 }

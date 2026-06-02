@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 using Winspot_App.Models;
@@ -17,6 +16,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     };
 
     private readonly LauncherSettingsStore _store;
+    private readonly IWinspotIpcClient _ipcClient;
 
     private bool _useControl;
     private bool _useAlt;
@@ -41,8 +41,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
 
     public SettingsViewModel(LauncherSettingsStore store, string pluginsPath)
+        : this(store, pluginsPath, new WinspotIpcClient())
+    {
+    }
+
+    public SettingsViewModel(LauncherSettingsStore store, string pluginsPath, IWinspotIpcClient ipcClient)
     {
         _store = store;
+        _ipcClient = ipcClient;
         PluginsPath = pluginsPath;
         SettingsPath = store.SettingsPath;
         IsPortable = AppPaths.IsPortable(AppContext.BaseDirectory);
@@ -75,22 +81,22 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         ? Directory.EnumerateFiles(PluginsPath, "*.json", SearchOption.TopDirectoryOnly).Count()
         : 0;
 
-    public string UserPluginManifestCountText => $"{UserPluginManifestCount} user manifest{(UserPluginManifestCount == 1 ? string.Empty : "s")}";
+    public string UserPluginManifestCountText => SettingsDisplayStrings.FormatUserPluginManifestCount(UserPluginManifestCount);
 
-    public string BuiltInPluginsText => "Calculator, Terminal, Clipboard, Unit Conversion";
+    public string BuiltInPluginsText => SettingsDisplayStrings.BuiltInPluginsText;
 
-    public string AppVersion => typeof(SettingsViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+    public string AppVersion => typeof(SettingsViewModel).Assembly.GetName().Version?.ToString(3)
+        ?? SettingsDisplayStrings.AppVersionFallback;
 
-    public string DiagnosticsText => string.Join(
-        Environment.NewLine,
-        $"Settings: {SettingsPath}",
-        $"Plugins: {PluginsPath}",
-        $"Portable: {(IsPortable ? "Yes" : "No")}",
-        $"Theme: {ThemeMode}",
-        $"Motion: {MotionProfile}",
-        $"Tray: {(ShowTrayIcon ? "Enabled" : "Hidden")}",
-        $"Hotkey: {HotkeyPreview}",
-        $"Version: {AppVersion}");
+    public string DiagnosticsText => SettingsDisplayStrings.FormatDiagnostics(
+        SettingsPath,
+        PluginsPath,
+        IsPortable,
+        ThemeMode.ToString(),
+        MotionProfile.ToString(),
+        ShowTrayIcon,
+        HotkeyPreview,
+        AppVersion);
 
     public bool UseControl
     {
@@ -235,20 +241,29 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             : "Saved, but that hotkey is unavailable. The previous hotkey is still active.";
     }
 
-    public void OpenPluginsFolder()
+    public async Task OpenPluginsFolderAsync(CancellationToken cancellationToken)
     {
         try
         {
-            Directory.CreateDirectory(PluginsPath);
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = PluginsPath,
-                UseShellExecute = true,
-            });
+            var action = new ActionItem(
+                SettingsDisplayStrings.OpenActionId,
+                SettingsDisplayStrings.OpenActionId,
+                SettingsDisplayStrings.OpenActionId);
+            var result = new SearchResultItem(
+                $"folder:{PluginsPath}",
+                SettingsDisplayStrings.PluginsFolderTitle,
+                PluginsPath,
+                SettingsDisplayStrings.PluginsFolderKind,
+                1,
+                SettingsDisplayStrings.OpenActionId,
+                new[] { action });
+
+            await _ipcClient.ExecuteAsync(result, action, cancellationToken).ConfigureAwait(true);
+            StatusMessage = SettingsDisplayStrings.OpenedPluginsFolder;
         }
         catch
         {
-            StatusMessage = "Could not open plugins folder.";
+            StatusMessage = SettingsDisplayStrings.OpenPluginsFolderFailed;
         }
     }
 

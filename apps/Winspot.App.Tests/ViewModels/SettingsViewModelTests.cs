@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -215,7 +217,7 @@ public sealed class SettingsViewModelTests
     }
 
     [TestMethod]
-    public void Diagnostics_ExposeLocalSettingsAndPluginFacts()
+    public void Diagnostics_WhenConstructed_ExposeLocalSettingsAndPluginFacts()
     {
         var pluginsRoot = Path.Combine(Path.GetTempPath(), $"winspot-plugins-{Guid.NewGuid():N}");
         Directory.CreateDirectory(pluginsRoot);
@@ -252,5 +254,40 @@ public sealed class SettingsViewModelTests
 
         Assert.IsTrue(viewModel.ReduceMotion);
         Assert.AreEqual(MotionProfile.Reduced, viewModel.BuildSettings().MotionProfile);
+    }
+
+    [TestMethod]
+    public async Task OpenPluginsFolderAsync_WhenInvoked_DispatchesFolderOpenThroughIpc()
+    {
+        var pluginsRoot = Path.Combine(Path.GetTempPath(), $"winspot-plugins-open-{Guid.NewGuid():N}");
+        var client = new RecordingIpcClient();
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), pluginsRoot, client);
+
+        await viewModel.OpenPluginsFolderAsync(CancellationToken.None);
+
+        Assert.IsNotNull(client.LastResult);
+        Assert.AreEqual($"folder:{pluginsRoot}", client.LastResult!.Id);
+        Assert.AreEqual("Open", client.LastAction?.Kind);
+        Assert.AreEqual("Opened plugins folder.", viewModel.StatusMessage);
+    }
+
+    private sealed class RecordingIpcClient : IWinspotIpcClient
+    {
+        public SearchResultItem? LastResult { get; private set; }
+
+        public ActionItem? LastAction { get; private set; }
+
+        public Task<IReadOnlyList<SearchResultItem>> SearchAsync(string query, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SearchResultItem>>(Array.Empty<SearchResultItem>());
+
+        public Task<string> ExecuteAsync(SearchResultItem result, ActionItem action, CancellationToken cancellationToken)
+        {
+            LastResult = result;
+            LastAction = action;
+            return Task.FromResult("Opened plugins folder.");
+        }
+
+        public Task<PreviewItem?> GetPreviewAsync(SearchResultItem result, CancellationToken cancellationToken) =>
+            Task.FromResult<PreviewItem?>(null);
     }
 }

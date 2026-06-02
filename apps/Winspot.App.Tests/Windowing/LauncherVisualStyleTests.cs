@@ -54,7 +54,7 @@ public sealed class LauncherVisualStyleTests
     }
 
     [TestMethod]
-    public void App_UsesSimpleThemeBaseForAvalonia12Performance()
+    public void AppAxaml_WhenConfigured_UsesSimpleThemeBase()
     {
         var axaml = File.ReadAllText(FindAppAxaml());
 
@@ -63,7 +63,7 @@ public sealed class LauncherVisualStyleTests
     }
 
     [TestMethod]
-    public void SettingsWindow_ContainsCompactTabbedSections()
+    public void SettingsWindow_WhenRendered_ContainsCompactTabbedSections()
     {
         var axaml = File.ReadAllText(FindSettingsWindowAxaml());
 
@@ -78,21 +78,35 @@ public sealed class LauncherVisualStyleTests
     }
 
     [TestMethod]
-    public void MainWindow_DoesNotThrottleResizeAnimationToSixtyHertz()
+    public void MainWindowCode_WhenInspected_DoesNotThrottleResizeAnimationToSixtyHertz()
     {
         var code = File.ReadAllText(FindMainWindowCodeBehind());
 
         Assert.IsFalse(code.Contains("Task.Delay(16"), "Snappy motion must not be capped by a hardcoded 16ms timer.");
+        Assert.IsFalse(code.Contains("_boundsAnimationCancellation"), "Removed bounds animation should not leave cancellation cleanup behind.");
     }
 
     [TestMethod]
-    public void App_LoadsDedicatedTrayIcon()
+    public void AppCode_WhenTrayIconLoaded_UsesDedicatedTrayIcon()
     {
         var code = File.ReadAllText(FindAppCodeBehind());
         var project = File.ReadAllText(FindAppProject());
 
         StringAssert.Contains(code, "WinspotTrayIcon.ico");
         StringAssert.Contains(project, "Assets\\WinspotTrayIcon.ico");
+    }
+
+    [TestMethod]
+    public void SettingsViewModel_WhenRenderingStrings_UsesSettingsDisplayStrings()
+    {
+        var viewModel = File.ReadAllText(FindSettingsViewModel());
+        var strings = File.ReadAllText(FindSettingsDisplayStrings());
+
+        StringAssert.Contains(viewModel, "SettingsDisplayStrings");
+        StringAssert.Contains(strings, "UserPluginManifestCountSingularFormat");
+        StringAssert.Contains(strings, "DiagnosticsFormat");
+        Assert.IsFalse(viewModel.Contains("user manifest{"), "Pluralized user-facing strings should live in SettingsDisplayStrings.");
+        Assert.IsFalse(viewModel.Contains("Could not open plugins folder."), "User-facing status strings should live in SettingsDisplayStrings.");
     }
 
     private static string FindMainWindowAxaml() =>
@@ -112,6 +126,12 @@ public sealed class LauncherVisualStyleTests
 
     private static string FindAppProject() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "Winspot.App.csproj"));
+
+    private static string FindSettingsViewModel() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "ViewModels", "SettingsViewModel.cs"));
+
+    private static string FindSettingsDisplayStrings() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "Strings", "SettingsDisplayStrings.cs"));
 
     private static string FindTokensAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "Themes", "Tokens.axaml"));

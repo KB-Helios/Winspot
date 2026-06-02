@@ -204,6 +204,58 @@ public sealed class LauncherSettingsStoreTests
     }
 
     [TestMethod]
+    public void ResolveSettingsPath_WhenLocalAppDataMissing_UsesSpecialFolder()
+    {
+        var originalUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        Environment.SetEnvironmentVariable("USERPROFILE", @"X:\RedirectedElsewhere");
+        try
+        {
+            var path = LauncherSettingsStore.ResolveSettingsPath("C:\\NotPortable", null);
+
+            Assert.AreEqual(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Winspot", "settings.json"),
+                path);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("USERPROFILE", originalUserProfile);
+        }
+    }
+
+    [TestMethod]
+    public void Load_WithUnknownEnumStrings_PreservesValidFieldsAndPersistsRepairedEnums()
+    {
+        File.WriteAllText(
+            _settingsPath,
+            """
+            {
+              "hotkey": {
+                "key": "K",
+                "modifiers": ["Control", "Shift"]
+              },
+              "launchOnStartup": true,
+              "showTrayIcon": false,
+              "reduceMotion": false,
+              "themeMode": "Neon",
+              "motionProfile": "WarpSpeed"
+            }
+            """);
+        var store = new LauncherSettingsStore(_settingsPath);
+
+        var reloaded = store.Load();
+        var persistedJson = File.ReadAllText(_settingsPath);
+
+        Assert.AreEqual("K", reloaded.Hotkey.Key);
+        CollectionAssert.AreEquivalent(new List<string> { "Control", "Shift" }, reloaded.Hotkey.Modifiers);
+        Assert.IsTrue(reloaded.LaunchOnStartup);
+        Assert.IsFalse(reloaded.ShowTrayIcon);
+        Assert.AreEqual(ThemeMode.Dark, reloaded.ThemeMode);
+        Assert.AreEqual(MotionProfile.Snappy240, reloaded.MotionProfile);
+        StringAssert.Contains(persistedJson, "\"themeMode\": \"Dark\"");
+        StringAssert.Contains(persistedJson, "\"motionProfile\": \"Snappy240\"");
+    }
+
+    [TestMethod]
     public void ResolvePluginsPath_WhenPortableMarkerExists_UsesExecutablePluginsFolder()
     {
         var root = Path.Combine(Path.GetTempPath(), $"winspot-portable-plugins-{Guid.NewGuid():N}");
