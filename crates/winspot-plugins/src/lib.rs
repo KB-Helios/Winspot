@@ -580,11 +580,16 @@ pub fn is_valid_plugin_id(id: &str) -> bool {
 }
 
 pub fn parse_plugin_result_id(result_id: &str) -> Result<&str, PluginActionAuthorizationError> {
-    result_id
+    let id = result_id
         .strip_prefix("plugin:")
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-        .ok_or(PluginActionAuthorizationError::MalformedId)
+        .ok_or(PluginActionAuthorizationError::MalformedId)?;
+
+    if is_valid_plugin_id(id) {
+        Ok(id)
+    } else {
+        Err(PluginActionAuthorizationError::MalformedId)
+    }
+}
 }
 
 pub fn built_in_plugin_manifests() -> Vec<PluginManifest> {
