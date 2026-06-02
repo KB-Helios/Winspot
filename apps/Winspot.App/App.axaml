@@ -5,7 +5,7 @@
     xmlns:conv="using:Winspot_App.Converters"
     RequestedThemeVariant="Dark">
     <Application.Styles>
-        <FluentTheme />
+        <SimpleTheme />
     </Application.Styles>
     <Application.Resources>
         <ResourceDictionary>

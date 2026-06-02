@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
+using Avalonia.Styling;
 
 using Winspot_App.Models;
 using Winspot_App.Services;
@@ -31,7 +32,8 @@ public sealed partial class App : Application
         {
             _desktop = desktop;
             var settings = _settingsStore.Load();
-            MotionSettings.ReduceMotion = settings.ReduceMotion;
+            ApplyTheme(settings.ThemeMode);
+            MotionSettings.Profile = settings.MotionProfile;
 
             _mainWindow = new MainWindow(settings);
             _mainWindow.ViewModel.SettingsRequested += (_, _) => ShowSettings();
@@ -103,7 +105,9 @@ public sealed partial class App : Application
 
     private void OnSettingsSaved(object? sender, LauncherSettings settings)
     {
-        MotionSettings.ReduceMotion = settings.ReduceMotion;
+        ApplyTheme(settings.ThemeMode);
+        MotionSettings.Profile = settings.MotionProfile;
+        _mainWindow?.ApplyMotionProfile(settings.MotionProfile);
         var registered = _mainWindow?.ApplyHotkey(settings.Hotkey) ?? false;
         if (sender is SettingsViewModel viewModel)
         {
@@ -124,12 +128,22 @@ public sealed partial class App : Application
     {
         try
         {
-            using var stream = AssetLoader.Open(new Uri("avares://Winspot.App/Assets/AppIcon.ico"));
+            using var stream = AssetLoader.Open(new Uri("avares://Winspot.App/Assets/WinspotTrayIcon.ico"));
             return new WindowIcon(stream);
         }
         catch
         {
             return null;
         }
+    }
+
+    private void ApplyTheme(ThemeMode themeMode)
+    {
+        RequestedThemeVariant = themeMode switch
+        {
+            ThemeMode.System => ThemeVariant.Default,
+            ThemeMode.Light => ThemeVariant.Light,
+            _ => ThemeVariant.Dark,
+        };
     }
 }

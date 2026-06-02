@@ -53,8 +53,65 @@ public sealed class LauncherVisualStyleTests
         Assert.IsFalse(tokens.Contains("TextControlBorderBrushFocused\" Color=\"#40FFFFFF\""), "Focused search text box should not draw a white glow.");
     }
 
+    [TestMethod]
+    public void App_UsesSimpleThemeBaseForAvalonia12Performance()
+    {
+        var axaml = File.ReadAllText(FindAppAxaml());
+
+        StringAssert.Contains(axaml, "<SimpleTheme />");
+        Assert.IsFalse(axaml.Contains("<FluentTheme />"), "Winspot should use the lightweight Avalonia SimpleTheme base.");
+    }
+
+    [TestMethod]
+    public void SettingsWindow_ContainsCompactTabbedSections()
+    {
+        var axaml = File.ReadAllText(FindSettingsWindowAxaml());
+
+        StringAssert.Contains(axaml, "TabControl");
+        foreach (var section in new[] { "General", "Hotkey", "Appearance", "Plugins", "Diagnostics", "About" })
+        {
+            StringAssert.Contains(axaml, $"Header=\"{section}\"");
+        }
+
+        Assert.IsFalse(axaml.Contains("CornerRadius=\"12\""), "Settings surfaces should stay at 8px radius or lower.");
+        Assert.IsFalse(axaml.Contains("<Setter Property=\"CornerRadius\" Value=\"12\""), "Settings card style should not use a 12px radius.");
+    }
+
+    [TestMethod]
+    public void MainWindow_DoesNotThrottleResizeAnimationToSixtyHertz()
+    {
+        var code = File.ReadAllText(FindMainWindowCodeBehind());
+
+        Assert.IsFalse(code.Contains("Task.Delay(16"), "Snappy motion must not be capped by a hardcoded 16ms timer.");
+    }
+
+    [TestMethod]
+    public void App_LoadsDedicatedTrayIcon()
+    {
+        var code = File.ReadAllText(FindAppCodeBehind());
+        var project = File.ReadAllText(FindAppProject());
+
+        StringAssert.Contains(code, "WinspotTrayIcon.ico");
+        StringAssert.Contains(project, "Assets\\WinspotTrayIcon.ico");
+    }
+
     private static string FindMainWindowAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "MainWindow.axaml"));
+
+    private static string FindMainWindowCodeBehind() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "MainWindow.axaml.cs"));
+
+    private static string FindSettingsWindowAxaml() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "SettingsWindow.axaml"));
+
+    private static string FindAppAxaml() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "App.axaml"));
+
+    private static string FindAppCodeBehind() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "App.axaml.cs"));
+
+    private static string FindAppProject() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "Winspot.App.csproj"));
 
     private static string FindTokensAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "Themes", "Tokens.axaml"));

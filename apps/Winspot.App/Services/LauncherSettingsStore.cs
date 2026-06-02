@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 using Winspot_App.Models;
 
@@ -10,6 +11,7 @@ public sealed class LauncherSettingsStore
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
     };
 
     private readonly string _settingsPath;
@@ -38,7 +40,7 @@ public sealed class LauncherSettingsStore
             }
 
             var json = File.ReadAllText(_settingsPath);
-            var settings = JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings();
+            var settings = NormalizeSettings(JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings());
             if (!NeedsHotkeyRepair(settings.Hotkey))
             {
                 return settings;
@@ -74,29 +76,7 @@ public sealed class LauncherSettingsStore
     }
 
     public static string ResolveSettingsPath(string baseDirectory, string? localAppData)
-    {
-        var portableMarker = Path.Combine(baseDirectory, "Winspot.portable");
-        if (File.Exists(portableMarker))
-        {
-            return Path.Combine(baseDirectory, "data", "settings.json");
-        }
-
-        if (string.IsNullOrWhiteSpace(localAppData))
-        {
-            var userProfile = Environment.GetEnvironmentVariable("USERPROFILE");
-            if (!string.IsNullOrWhiteSpace(userProfile))
-            {
-                localAppData = Path.Combine(userProfile, "AppData", "Local");
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(localAppData))
-        {
-            localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        }
-
-        return Path.Combine(localAppData, "Winspot", "settings.json");
-    }
+        => AppPaths.ResolveSettingsPath(baseDirectory, localAppData);
 
     private static string DefaultSettingsPath()
     {
@@ -118,7 +98,23 @@ public sealed class LauncherSettingsStore
         LaunchOnStartup = settings.LaunchOnStartup,
         ShowTrayIcon = settings.ShowTrayIcon,
         ReduceMotion = settings.ReduceMotion,
+        ThemeMode = settings.ThemeMode,
+        MotionProfile = settings.MotionProfile,
     };
+
+    private static LauncherSettings NormalizeSettings(LauncherSettings settings)
+    {
+        var motionProfile = settings.ReduceMotion ? MotionProfile.Reduced : settings.MotionProfile;
+        return new LauncherSettings
+        {
+            Hotkey = settings.Hotkey,
+            LaunchOnStartup = settings.LaunchOnStartup,
+            ShowTrayIcon = settings.ShowTrayIcon,
+            ReduceMotion = motionProfile == MotionProfile.Reduced,
+            ThemeMode = settings.ThemeMode,
+            MotionProfile = motionProfile,
+        };
+    }
 
     private void TrySaveRepair(LauncherSettings repaired)
     {
