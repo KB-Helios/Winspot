@@ -372,30 +372,22 @@ fn registry_authorizes_only_trusted_enabled_executable_plugins() {
             .is_ok(),
         "trusted executable built-in should be authorized"
     );
-    assert!(
-        matches!(
-            registry.ensure_plugin_command_allowed("plugin:clipboard"),
-            Err(winspot_plugins::PluginActionAuthorizationError::NoExecutableAction { .. })
-        )
-    );
-    assert!(
-        matches!(
-            registry.ensure_plugin_command_allowed("plugin:custom"),
-            Err(winspot_plugins::PluginActionAuthorizationError::Untrusted { .. })
-        )
-    );
-    assert!(
-        matches!(
-            registry.ensure_plugin_command_allowed("plugin:off"),
-            Err(winspot_plugins::PluginActionAuthorizationError::Disabled { .. })
-        )
-    );
-    assert!(
-        matches!(
-            registry.ensure_plugin_command_allowed("plugin:"),
-            Err(winspot_plugins::PluginActionAuthorizationError::MalformedId)
-        )
-    );
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin:clipboard"),
+        Err(winspot_plugins::PluginActionAuthorizationError::NoExecutableAction { .. })
+    ));
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin:custom"),
+        Err(winspot_plugins::PluginActionAuthorizationError::Untrusted { .. })
+    ));
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin:off"),
+        Err(winspot_plugins::PluginActionAuthorizationError::Disabled { .. })
+    ));
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin:"),
+        Err(winspot_plugins::PluginActionAuthorizationError::MalformedId)
+    ));
 
     fs::remove_dir_all(root).expect("cleanup");
 }

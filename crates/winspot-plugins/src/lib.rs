@@ -590,7 +590,6 @@ pub fn parse_plugin_result_id(result_id: &str) -> Result<&str, PluginActionAutho
         Err(PluginActionAuthorizationError::MalformedId)
     }
 }
-}
 
 pub fn built_in_plugin_manifests() -> Vec<PluginManifest> {
     vec![
