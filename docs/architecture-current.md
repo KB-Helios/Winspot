@@ -48,7 +48,16 @@ action descriptors. The action crate checks capabilities before clipboard,
 shell, process, filesystem, or plugin work. The plugin crate supports phase-1
 internal Rust plugin manifests and built-in calculator, terminal, clipboard, and
 unit-conversion plugin identities. WASM sandboxing and a marketplace are outside
-the current phase.
+the current phase. Plugin loading emits a typed validation report, user manifests
+are search-only by default, and plugin command execution is authorized against
+the daemon's trusted registry before the action executor runs.
+
+## Plugin Validation
+
+The validation stage accepts warning-only manifests, rejects malformed or
+policy-breaking manifests, and is available through `winspot-pluginctl validate`
+for CI and local checks. The daemon keeps the same report in memory and exposes
+it over IPC through `PluginDiagnosticsRequested` / `PluginDiagnosticsReady`.
 
 ## Packaging And Diagnostics
 

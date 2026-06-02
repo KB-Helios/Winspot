@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use winspot_core::{ActionCapability, SearchResultKind};
 use winspot_plugins::{
-    PluginManifest, PluginRegistry, PluginValidationError, built_in_plugin_manifests,
+    PluginManifest, PluginRegistry, PluginSource, PluginValidationError, PluginValidationStatus,
+    built_in_plugin_manifests,
 };
 
 /// Returns a unique, freshly-created temp directory so tests can run in
@@ -164,6 +165,55 @@ fn load_dir_into_merges_user_manifests_with_built_ins() {
 }
 
 #[test]
+fn load_dir_into_accepts_case_insensitive_json_extensions() {
+    let root = unique_temp_dir("case-ext");
+    fs::write(
+        root.join("custom.JSON"),
+        r#"{"id":"custom","name":"Custom Plugin","capabilities":[],"enabled":true}"#,
+    )
+    .expect("write manifest");
+
+    let registry = PluginRegistry::load_dir(&root).expect("load registry");
+
+    assert_eq!(
+        registry.internal_results("Custom")[0].title,
+        "Custom Plugin"
+    );
+
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn load_dir_into_with_report_propagates_non_directory_errors() {
+    let root = unique_temp_dir("not-dir");
+    let not_directory = root.join("plugins.json");
+    fs::write(&not_directory, b"not a directory").expect("write file");
+    let mut registry = PluginRegistry::default();
+
+    let error = registry
+        .load_dir_into_with_report(&not_directory)
+        .expect_err("file path should not be treated as empty plugin dir");
+
+    assert!(error.to_string().contains("failed to read directory"));
+
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn load_dir_into_with_report_tolerates_missing_directory() {
+    let missing =
+        std::env::temp_dir().join(format!("winspot-plugins-missing-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&missing);
+    let mut registry = PluginRegistry::default();
+
+    let report = registry
+        .load_dir_into_with_report(&missing)
+        .expect("missing directory is allowed for daemon startup");
+
+    assert!(report.entries.is_empty());
+}
+
+#[test]
 fn load_dir_into_skips_duplicate_and_invalid_manifests() {
     let root = unique_temp_dir("dupe");
     // Reuses a built-in id -> rejected as a duplicate, built-in preserved.
@@ -203,6 +253,141 @@ fn disabled_manifests_are_not_returned() {
     let registry = PluginRegistry::load_dir(&root).expect("load");
 
     assert!(registry.internal_results("Disabled").is_empty());
+
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+fn issue_codes(report: &winspot_plugins::PluginValidationReport) -> Vec<&str> {
+    report
+        .entries
+        .iter()
+        .flat_map(|entry| entry.issues.iter().map(|issue| issue.code.as_str()))
+        .collect()
+}
+
+#[test]
+fn validation_report_records_unknown_fields_and_user_execution_warnings() {
+    let root = unique_temp_dir("warnings");
+    fs::write(
+        root.join("warn.json"),
+        r#"{
+            "id":"warn",
+            "name":"Warn Plugin",
+            "capabilities":["PluginExecution"],
+            "description":"future manifest field",
+            "enabled":true
+        }"#,
+    )
+    .expect("write warning manifest");
+
+    let (registry, report) = PluginRegistry::load_dir_with_report(&root).expect("load report");
+    let entry = report
+        .entries
+        .iter()
+        .find(|entry| entry.id.as_deref() == Some("warn"))
+        .expect("warning entry exists");
+    let codes = issue_codes(&report);
+
+    assert!(!report.has_errors(), "warnings must not fail validation");
+    assert!(report.has_warnings(), "report should expose warning state");
+    assert_eq!(entry.source, PluginSource::User);
+    assert_eq!(entry.status, PluginValidationStatus::Accepted);
+    assert!(!entry.trusted, "user manifests are search-only by default");
+    assert!(codes.contains(&"unknown_field"));
+    assert!(codes.contains(&"ignored_user_executable_capability"));
+    assert!(
+        registry
+            .enabled_manifests()
+            .any(|manifest| manifest.id == "warn"),
+        "valid warning-only manifest should still be searchable"
+    );
+    assert!(
+        !registry.plugin_has_executable_action("warn"),
+        "user manifest must not gain executable plugin actions in V1"
+    );
+
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn validation_report_records_rejected_manifests() {
+    let root = unique_temp_dir("rejected");
+    fs::write(root.join("broken.json"), "{not json").expect("write malformed manifest");
+    fs::write(
+        root.join("bad-id.json"),
+        r#"{"id":"Bad Id","name":"Bad","capabilities":[],"enabled":true}"#,
+    )
+    .expect("write invalid id manifest");
+    fs::write(
+        root.join("duplicate.json"),
+        r#"{"id":"calculator","name":"Hijack","capabilities":[],"enabled":true}"#,
+    )
+    .expect("write duplicate manifest");
+
+    let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
+    report.extend(
+        registry
+            .load_dir_into_with_report(&root)
+            .expect("load user report"),
+    );
+    let codes = issue_codes(&report);
+
+    assert!(report.has_errors());
+    assert!(codes.contains(&"manifest_parse_failed"));
+    assert!(codes.contains(&"invalid_manifest"));
+    assert!(codes.contains(&"duplicate_plugin_id"));
+    assert!(
+        report
+            .entries
+            .iter()
+            .any(|entry| entry.status == PluginValidationStatus::Rejected)
+    );
+    assert!(registry.internal_results("Hijack").is_empty());
+
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn registry_authorizes_only_trusted_enabled_executable_plugins() {
+    let root = unique_temp_dir("authorization");
+    fs::write(
+        root.join("custom.json"),
+        r#"{"id":"custom","name":"Custom Plugin","capabilities":["PluginExecution"],"enabled":true}"#,
+    )
+    .expect("write custom manifest");
+    fs::write(
+        root.join("off.json"),
+        r#"{"id":"off","name":"Disabled Plugin","capabilities":[],"enabled":false}"#,
+    )
+    .expect("write disabled manifest");
+
+    let (mut registry, _report) = PluginRegistry::with_built_ins_with_report();
+    registry
+        .load_dir_into_with_report(&root)
+        .expect("load user manifests");
+
+    assert!(
+        registry
+            .ensure_plugin_command_allowed("plugin:calculator")
+            .is_ok(),
+        "trusted executable built-in should be authorized"
+    );
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin:clipboard"),
+        Err(winspot_plugins::PluginActionAuthorizationError::NoExecutableAction { .. })
+    ));
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin:custom"),
+        Err(winspot_plugins::PluginActionAuthorizationError::Untrusted { .. })
+    ));
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin:off"),
+        Err(winspot_plugins::PluginActionAuthorizationError::Disabled { .. })
+    ));
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin:"),
+        Err(winspot_plugins::PluginActionAuthorizationError::MalformedId)
+    ));
 
     fs::remove_dir_all(root).expect("cleanup");
 }

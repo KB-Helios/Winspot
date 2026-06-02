@@ -5,6 +5,7 @@ members = [
     "crates/winspot-core",
     "crates/winspot-daemon",
     "crates/winspot-index",
+    "crates/winspot-pluginctl",
     "crates/winspot-plugins",
     "crates/winspot-preview",
     "crates/winspot-search"

@@ -243,3 +243,29 @@ fn plugin_provider_includes_built_ins_and_loaded_manifests() {
 
     fs::remove_dir_all(root).expect("cleanup");
 }
+
+#[test]
+fn plugin_provider_does_not_expose_actions_for_untrusted_user_manifest_ids() {
+    let root = std::env::temp_dir().join(format!(
+        "winspot-search-untrusted-plugins-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&root).expect("create plugin dir");
+    fs::write(
+        root.join("terminal.json"),
+        r#"{"id":"terminal","name":"User Terminal","capabilities":["PluginExecution"],"enabled":true}"#,
+    )
+    .expect("write manifest");
+
+    let (registry, report) = PluginRegistry::load_dir_with_report(&root).expect("load manifests");
+    assert!(report.has_warnings());
+    assert!(!registry.plugin_has_executable_action("terminal"));
+
+    let provider = PluginProvider::new(Arc::new(registry));
+    let results = provider.search("user terminal");
+
+    assert_eq!(results[0].title, "User Terminal");
+    assert!(results[0].actions.is_empty());
+
+    fs::remove_dir_all(root).expect("cleanup");
+}

@@ -383,6 +383,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "winspot-pluginctl"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "winspot-plugins",
+]
+
+[[package]]
 name = "winspot-plugins"
 version = "0.1.0"
 dependencies = [
