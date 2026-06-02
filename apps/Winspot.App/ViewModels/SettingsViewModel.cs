@@ -16,6 +16,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     };
 
     private readonly LauncherSettingsStore _store;
+    private readonly IWinspotIpcClient _ipcClient;
 
     private bool _useControl;
     private bool _useAlt;
@@ -24,7 +25,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private string _key = "Space";
     private bool _launchOnStartup;
     private bool _showTrayIcon = true;
-    private bool _reduceMotion;
+    private ThemeMode _themeMode = ThemeMode.Dark;
+    private MotionProfile _motionProfile = MotionProfile.Snappy240;
+    private int _selectedSectionIndex;
     private string _statusMessage = string.Empty;
 
     public SettingsViewModel()
@@ -33,8 +36,22 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
 
     public SettingsViewModel(LauncherSettingsStore store)
+        : this(store, AppPaths.ResolvePluginsPath(AppContext.BaseDirectory, Environment.GetEnvironmentVariable("LOCALAPPDATA")))
+    {
+    }
+
+    public SettingsViewModel(LauncherSettingsStore store, string pluginsPath)
+        : this(store, pluginsPath, new WinspotIpcClient())
+    {
+    }
+
+    public SettingsViewModel(LauncherSettingsStore store, string pluginsPath, IWinspotIpcClient ipcClient)
     {
         _store = store;
+        _ipcClient = ipcClient;
+        PluginsPath = pluginsPath;
+        SettingsPath = store.SettingsPath;
+        IsPortable = AppPaths.IsPortable(AppContext.BaseDirectory);
         LoadFrom(store.Load());
     }
 
@@ -43,6 +60,43 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// Raised after settings are validated and persisted, carrying the saved
     /// snapshot so the application can re-register the hotkey and tray icon.
     public event EventHandler<LauncherSettings>? Saved;
+
+    public IReadOnlyList<ThemeMode> ThemeModeOptions { get; } = Enum.GetValues<ThemeMode>();
+
+    public IReadOnlyList<MotionProfile> MotionProfileOptions { get; } = Enum.GetValues<MotionProfile>();
+
+    public int SelectedSectionIndex
+    {
+        get => _selectedSectionIndex;
+        set => SetField(ref _selectedSectionIndex, value);
+    }
+
+    public string SettingsPath { get; }
+
+    public string PluginsPath { get; }
+
+    public bool IsPortable { get; }
+
+    public int UserPluginManifestCount => Directory.Exists(PluginsPath)
+        ? Directory.EnumerateFiles(PluginsPath, "*.json", SearchOption.TopDirectoryOnly).Count()
+        : 0;
+
+    public string UserPluginManifestCountText => SettingsDisplayStrings.FormatUserPluginManifestCount(UserPluginManifestCount);
+
+    public string BuiltInPluginsText => SettingsDisplayStrings.BuiltInPluginsText;
+
+    public string AppVersion => typeof(SettingsViewModel).Assembly.GetName().Version?.ToString(3)
+        ?? SettingsDisplayStrings.AppVersionFallback;
+
+    public string DiagnosticsText => SettingsDisplayStrings.FormatDiagnostics(
+        SettingsPath,
+        PluginsPath,
+        IsPortable,
+        ThemeMode.ToString(),
+        MotionProfile.ToString(),
+        ShowTrayIcon,
+        HotkeyPreview,
+        AppVersion);
 
     public bool UseControl
     {
@@ -76,6 +130,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             if (SetField(ref _key, value))
             {
                 OnPropertyChanged(nameof(HotkeyPreview));
+                OnPropertyChanged(nameof(DiagnosticsText));
             }
         }
     }
@@ -89,13 +144,44 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public bool ShowTrayIcon
     {
         get => _showTrayIcon;
-        set => SetField(ref _showTrayIcon, value);
+        set
+        {
+            if (SetField(ref _showTrayIcon, value))
+            {
+                OnPropertyChanged(nameof(DiagnosticsText));
+            }
+        }
     }
 
     public bool ReduceMotion
     {
-        get => _reduceMotion;
-        set => SetField(ref _reduceMotion, value);
+        get => _motionProfile == MotionProfile.Reduced;
+        set => MotionProfile = value ? MotionProfile.Reduced : MotionProfile.Snappy240;
+    }
+
+    public ThemeMode ThemeMode
+    {
+        get => _themeMode;
+        set
+        {
+            if (SetField(ref _themeMode, value))
+            {
+                OnPropertyChanged(nameof(DiagnosticsText));
+            }
+        }
+    }
+
+    public MotionProfile MotionProfile
+    {
+        get => _motionProfile;
+        set
+        {
+            if (SetField(ref _motionProfile, value))
+            {
+                OnPropertyChanged(nameof(ReduceMotion));
+                OnPropertyChanged(nameof(DiagnosticsText));
+            }
+        }
     }
 
     public string StatusMessage
@@ -114,7 +200,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         Hotkey = BuildBinding(),
         LaunchOnStartup = _launchOnStartup,
         ShowTrayIcon = _showTrayIcon,
-        ReduceMotion = _reduceMotion,
+        ReduceMotion = ReduceMotion,
+        ThemeMode = _themeMode,
+        MotionProfile = _motionProfile,
     };
 
     public bool TrySave()
@@ -153,6 +241,32 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             : "Saved, but that hotkey is unavailable. The previous hotkey is still active.";
     }
 
+    public async Task OpenPluginsFolderAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var action = new ActionItem(
+                SettingsDisplayStrings.OpenActionId,
+                SettingsDisplayStrings.OpenActionId,
+                SettingsDisplayStrings.OpenActionId);
+            var result = new SearchResultItem(
+                $"folder:{PluginsPath}",
+                SettingsDisplayStrings.PluginsFolderTitle,
+                PluginsPath,
+                SettingsDisplayStrings.PluginsFolderKind,
+                1,
+                SettingsDisplayStrings.OpenActionId,
+                new[] { action });
+
+            await _ipcClient.ExecuteAsync(result, action, cancellationToken).ConfigureAwait(true);
+            StatusMessage = SettingsDisplayStrings.OpenedPluginsFolder;
+        }
+        catch
+        {
+            StatusMessage = SettingsDisplayStrings.OpenPluginsFolderFailed;
+        }
+    }
+
     private void LoadFrom(LauncherSettings settings)
     {
         var modifiers = settings.Hotkey.Modifiers
@@ -166,7 +280,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _key = settings.Hotkey.Key;
         _launchOnStartup = settings.LaunchOnStartup;
         _showTrayIcon = settings.ShowTrayIcon;
-        _reduceMotion = settings.ReduceMotion;
+        _themeMode = settings.ThemeMode;
+        _motionProfile = settings.ReduceMotion ? MotionProfile.Reduced : settings.MotionProfile;
     }
 
     private HotkeyBinding BuildBinding() => new()
@@ -223,6 +338,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         if (SetField(ref field, value, propertyName))
         {
             OnPropertyChanged(nameof(HotkeyPreview));
+            OnPropertyChanged(nameof(DiagnosticsText));
         }
     }
 

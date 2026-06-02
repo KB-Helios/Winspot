@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -44,6 +46,8 @@ public sealed class SettingsViewModelTests
         Assert.AreEqual("Space", viewModel.Key);
         Assert.IsTrue(viewModel.ShowTrayIcon);
         Assert.IsFalse(viewModel.LaunchOnStartup);
+        Assert.AreEqual(ThemeMode.Dark, viewModel.ThemeMode);
+        Assert.AreEqual(MotionProfile.Snappy240, viewModel.MotionProfile);
         Assert.AreEqual("Ctrl Alt Space", viewModel.HotkeyPreview);
     }
 
@@ -57,6 +61,8 @@ public sealed class SettingsViewModelTests
             LaunchOnStartup = true,
             ShowTrayIcon = false,
             ReduceMotion = true,
+            ThemeMode = ThemeMode.Light,
+            MotionProfile = MotionProfile.Reduced,
         });
 
         var viewModel = new SettingsViewModel(store);
@@ -68,6 +74,8 @@ public sealed class SettingsViewModelTests
         Assert.IsTrue(viewModel.LaunchOnStartup);
         Assert.IsFalse(viewModel.ShowTrayIcon);
         Assert.IsTrue(viewModel.ReduceMotion);
+        Assert.AreEqual(ThemeMode.Light, viewModel.ThemeMode);
+        Assert.AreEqual(MotionProfile.Reduced, viewModel.MotionProfile);
     }
 
     [TestMethod]
@@ -164,6 +172,8 @@ public sealed class SettingsViewModelTests
             ShowTrayIcon = false,
             LaunchOnStartup = false,
             ReduceMotion = true,
+            ThemeMode = ThemeMode.System,
+            MotionProfile = MotionProfile.Reduced,
         };
 
         var saved = viewModel.TrySave();
@@ -175,6 +185,8 @@ public sealed class SettingsViewModelTests
         CollectionAssert.AreEquivalent(new List<string> { "Control", "Shift" }, reloaded.Hotkey.Modifiers);
         Assert.IsFalse(reloaded.ShowTrayIcon);
         Assert.IsTrue(reloaded.ReduceMotion);
+        Assert.AreEqual(ThemeMode.System, reloaded.ThemeMode);
+        Assert.AreEqual(MotionProfile.Reduced, reloaded.MotionProfile);
     }
 
     [TestMethod]
@@ -202,5 +214,80 @@ public sealed class SettingsViewModelTests
         viewModel.SetHotkeyRegistrationStatus(false);
 
         Assert.IsTrue(viewModel.StatusMessage.Contains("previous hotkey"));
+    }
+
+    [TestMethod]
+    public void Diagnostics_WhenConstructed_ExposeLocalSettingsAndPluginFacts()
+    {
+        var pluginsRoot = Path.Combine(Path.GetTempPath(), $"winspot-plugins-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(pluginsRoot);
+        File.WriteAllText(Path.Combine(pluginsRoot, "notes.json"), "{}");
+        File.WriteAllText(Path.Combine(pluginsRoot, "readme.txt"), "ignored");
+        try
+        {
+            var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), pluginsRoot);
+
+            Assert.AreEqual(_settingsPath, viewModel.SettingsPath);
+            Assert.AreEqual(pluginsRoot, viewModel.PluginsPath);
+            Assert.AreEqual(1, viewModel.UserPluginManifestCount);
+            StringAssert.Contains(viewModel.BuiltInPluginsText, "Calculator");
+            StringAssert.Contains(viewModel.BuiltInPluginsText, "Unit Conversion");
+            StringAssert.Contains(viewModel.DiagnosticsText, "Theme: Dark");
+            StringAssert.Contains(viewModel.DiagnosticsText, "Motion: Snappy240");
+        }
+        finally
+        {
+            if (Directory.Exists(pluginsRoot))
+            {
+                Directory.Delete(pluginsRoot, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void MotionProfile_WhenSetToReduced_KeepsReduceMotionCompatibilityTrue()
+    {
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath))
+        {
+            MotionProfile = MotionProfile.Reduced,
+        };
+
+        Assert.IsTrue(viewModel.ReduceMotion);
+        Assert.AreEqual(MotionProfile.Reduced, viewModel.BuildSettings().MotionProfile);
+    }
+
+    [TestMethod]
+    public async Task OpenPluginsFolderAsync_WhenInvoked_DispatchesFolderOpenThroughIpc()
+    {
+        var pluginsRoot = Path.Combine(Path.GetTempPath(), $"winspot-plugins-open-{Guid.NewGuid():N}");
+        var client = new RecordingIpcClient();
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), pluginsRoot, client);
+
+        await viewModel.OpenPluginsFolderAsync(CancellationToken.None);
+
+        Assert.IsNotNull(client.LastResult);
+        Assert.AreEqual($"folder:{pluginsRoot}", client.LastResult!.Id);
+        Assert.AreEqual("Open", client.LastAction?.Kind);
+        Assert.AreEqual("Opened plugins folder.", viewModel.StatusMessage);
+    }
+
+    private sealed class RecordingIpcClient : IWinspotIpcClient
+    {
+        public SearchResultItem? LastResult { get; private set; }
+
+        public ActionItem? LastAction { get; private set; }
+
+        public Task<IReadOnlyList<SearchResultItem>> SearchAsync(string query, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SearchResultItem>>(Array.Empty<SearchResultItem>());
+
+        public Task<string> ExecuteAsync(SearchResultItem result, ActionItem action, CancellationToken cancellationToken)
+        {
+            LastResult = result;
+            LastAction = action;
+            return Task.FromResult("Opened plugins folder.");
+        }
+
+        public Task<PreviewItem?> GetPreviewAsync(SearchResultItem result, CancellationToken cancellationToken) =>
+            Task.FromResult<PreviewItem?>(null);
     }
 }

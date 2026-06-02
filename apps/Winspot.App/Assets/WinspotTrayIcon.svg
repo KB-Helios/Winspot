@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Winspot tray icon</title>
+  <desc id="desc">A compact spotlight search mark for the Winspot system tray icon.</desc>
+  <defs>
+    <linearGradient id="beam" x1="18" y1="14" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9AF8E5" />
+      <stop offset="0.58" stop-color="#72F1D6" />
+      <stop offset="1" stop-color="#3BBEA4" />
+    </linearGradient>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#020711" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <rect width="64" height="64" rx="16" fill="#111620" />
+  <path
+    d="M18 16h28c1.9 0 3.1 2 2.2 3.7L33.9 47.6a2.2 2.2 0 0 1-3.9 0L15.8 19.7C14.9 18 16.1 16 18 16Z"
+    fill="#151C28"
+    stroke="#2B3546"
+    stroke-width="2" />
+  <path
+    d="M22 21h7.4l3.1 15.2L37.4 21H42L34.8 43h-5.1l-3-14.2L23.8 43h-5.1l-5-22h4.7l3.1 15.2L22 21Z"
+    fill="url(#beam)"
+    filter="url(#soft-shadow)" />
+  <path
+    d="M42 42l7.5 7.5"
+    fill="none"
+    stroke="#72F1D6"
+    stroke-linecap="round"
+    stroke-width="4" />
+  <circle cx="41" cy="41" r="8" fill="none" stroke="#E8EDF7" stroke-opacity="0.92" stroke-width="4" />
+</svg>

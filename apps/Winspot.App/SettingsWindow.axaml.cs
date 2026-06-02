@@ -40,4 +40,9 @@ public sealed partial class SettingsWindow : Window
     {
         Close();
     }
+
+    private async void OnOpenPluginsFolderClick(object? sender, RoutedEventArgs e)
+    {
+        await ViewModel.OpenPluginsFolderAsync(CancellationToken.None);
+    }
 }

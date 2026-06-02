@@ -5,96 +5,215 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:Winspot_App.ViewModels"
     Title="Winspot Settings"
-    Width="460"
-    Height="470"
+    Width="720"
+    Height="540"
     Background="{DynamicResource SurfaceBrush}"
     CanResize="False"
     WindowStartupLocation="CenterScreen">
     <Window.Styles>
         <Style Selector="TextBlock.section-title">
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
-        <Style Selector="CheckBox">
+        <Style Selector="TextBlock.label">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12.5" />
         </Style>
         <Style Selector="TextBlock.hint">
             <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
             <Setter Property="FontSize" Value="11" />
         </Style>
-        <Style Selector="Border.card">
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Border.panel">
             <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderInnerBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="16" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+        <Style Selector="Grid.setting-row">
+            <Setter Property="MinHeight" Value="36" />
+        </Style>
+        <Style Selector="Button.icon-button">
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="0" />
         </Style>
     </Window.Styles>
 
-    <Grid Margin="20" RowDefinitions="Auto,*,Auto" RowSpacing="16">
+    <Grid Margin="18" RowDefinitions="Auto,*,Auto" RowSpacing="14">
         <TextBlock
             FontSize="20"
             FontWeight="SemiBold"
             Foreground="{DynamicResource TextPrimaryBrush}"
-            Text="Settings" />
+            Text="Winspot Settings" />
 
-        <StackPanel Grid.Row="1" Spacing="16">
-            <Border Classes="card">
-                <StackPanel Spacing="10">
-                    <TextBlock Classes="section-title" Text="Activation hotkey" />
-                    <WrapPanel>
-                        <CheckBox Content="Ctrl" IsChecked="{Binding UseControl}" Margin="0,0,16,0" />
-                        <CheckBox Content="Alt" IsChecked="{Binding UseAlt}" Margin="0,0,16,0" />
-                        <CheckBox Content="Shift" IsChecked="{Binding UseShift}" Margin="0,0,16,0" />
-                        <CheckBox Content="Win" IsChecked="{Binding UseWin}" />
-                    </WrapPanel>
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" VerticalAlignment="Center">
-                        <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" Text="Key" />
-                        <TextBox
-                            Grid.Column="1"
-                            AutomationProperties.AutomationId="SettingsHotkeyKey"
-                            MaxLength="12"
-                            Text="{Binding Key, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                            PlaceholderText="Space" />
-                    </Grid>
-                    <TextBlock Classes="hint" Text="{Binding HotkeyPreview, StringFormat='Current chord: {0}'}" />
-                </StackPanel>
-            </Border>
+        <TabControl
+            Grid.Row="1"
+            SelectedIndex="{Binding SelectedSectionIndex}">
+            <TabItem Header="General">
+                <Border Classes="panel" Margin="0,10,0,0">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="section-title" Text="General" />
+                        <CheckBox Content="Launch Winspot when I sign in" IsChecked="{Binding LaunchOnStartup}" />
+                        <CheckBox Content="Show icon in the system tray" IsChecked="{Binding ShowTrayIcon}" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
 
-            <Border Classes="card">
-                <StackPanel Spacing="10">
-                    <TextBlock Classes="section-title" Text="General" />
-                    <CheckBox Content="Launch Winspot when I sign in" IsChecked="{Binding LaunchOnStartup}" />
-                    <CheckBox Content="Show icon in the system tray" IsChecked="{Binding ShowTrayIcon}" />
-                    <CheckBox Content="Reduce motion (minimize animations)" IsChecked="{Binding ReduceMotion}" />
-                </StackPanel>
-            </Border>
+            <TabItem Header="Hotkey">
+                <Border Classes="panel" Margin="0,10,0,0">
+                    <StackPanel Spacing="12">
+                        <TextBlock Classes="section-title" Text="Activation hotkey" />
+                        <WrapPanel>
+                            <CheckBox Content="Ctrl" IsChecked="{Binding UseControl}" Margin="0,0,16,0" />
+                            <CheckBox Content="Alt" IsChecked="{Binding UseAlt}" Margin="0,0,16,0" />
+                            <CheckBox Content="Shift" IsChecked="{Binding UseShift}" Margin="0,0,16,0" />
+                            <CheckBox Content="Win" IsChecked="{Binding UseWin}" />
+                        </WrapPanel>
+                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18" VerticalAlignment="Center">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Key" />
+                            <TextBox
+                                Grid.Column="1"
+                                AutomationProperties.AutomationId="SettingsHotkeyKey"
+                                MaxLength="12"
+                                Text="{Binding Key, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="Space" />
+                        </Grid>
+                        <TextBlock Classes="hint" Text="{Binding HotkeyPreview, StringFormat='Current chord: {0}'}" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
 
+            <TabItem Header="Appearance">
+                <Border Classes="panel" Margin="0,10,0,0">
+                    <StackPanel Spacing="12">
+                        <TextBlock Classes="section-title" Text="Appearance" />
+                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Theme" />
+                            <ComboBox
+                                Grid.Column="1"
+                                ItemsSource="{Binding ThemeModeOptions}"
+                                SelectedItem="{Binding ThemeMode, Mode=TwoWay}" />
+                        </Grid>
+                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Motion" />
+                            <ComboBox
+                                Grid.Column="1"
+                                ItemsSource="{Binding MotionProfileOptions}"
+                                SelectedItem="{Binding MotionProfile, Mode=TwoWay}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Plugins">
+                <Border Classes="panel" Margin="0,10,0,0">
+                    <StackPanel Spacing="12">
+                        <TextBlock Classes="section-title" Text="Plugins" />
+                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Built-in" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Classes="hint"
+                                VerticalAlignment="Center"
+                                Text="{Binding BuiltInPluginsText}"
+                                TextWrapping="Wrap" />
+                        </Grid>
+                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="User manifests" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Classes="hint"
+                                VerticalAlignment="Center"
+                                Text="{Binding UserPluginManifestCountText}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="210,*,Auto" ColumnSpacing="18">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Folder" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Classes="hint"
+                                VerticalAlignment="Center"
+                                Text="{Binding PluginsPath}"
+                                TextTrimming="CharacterEllipsis" />
+                            <Button
+                                Grid.Column="2"
+                                Classes="icon-button"
+                                Click="OnOpenPluginsFolderClick"
+                                ToolTip.Tip="Open folder">
+                                <TextBlock
+                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                    FontSize="15"
+                                    Text="&#xE838;" />
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Diagnostics">
+                <Border Classes="panel" Margin="0,10,0,0">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="section-title" Text="Diagnostics" />
+                        <TextBlock
+                            Classes="hint"
+                            FontFamily="Consolas, Cascadia Mono"
+                            Text="{Binding DiagnosticsText}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="About">
+                <Border Classes="panel" Margin="0,10,0,0">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="section-title" Text="About" />
+                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Version" />
+                            <TextBlock Grid.Column="1" Classes="hint" VerticalAlignment="Center" Text="{Binding AppVersion}" />
+                        </Grid>
+                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Settings" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Classes="hint"
+                                VerticalAlignment="Center"
+                                Text="{Binding SettingsPath}"
+                                TextTrimming="CharacterEllipsis" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <Grid
+            Grid.Row="2"
+            ColumnDefinitions="*,Auto,Auto"
+            ColumnSpacing="10">
             <TextBlock
                 Classes="hint"
+                VerticalAlignment="Center"
                 Foreground="{DynamicResource AccentBrush}"
                 Text="{Binding StatusMessage}" />
-        </StackPanel>
-
-        <StackPanel
-            Grid.Row="2"
-            HorizontalAlignment="Right"
-            Orientation="Horizontal"
-            Spacing="10">
             <Button
                 x:Name="CancelButton"
+                Grid.Column="1"
                 Click="OnCancelClick"
                 Content="Cancel"
                 MinWidth="92" />
             <Button
                 x:Name="SaveButton"
+                Grid.Column="2"
                 Click="OnSaveClick"
                 Content="Save"
                 Foreground="{DynamicResource AccentForegroundBrush}"
                 Background="{DynamicResource AccentBrush}"
                 MinWidth="92" />
-        </StackPanel>
+        </Grid>
     </Grid>
 </Window>

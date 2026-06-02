@@ -39,6 +39,8 @@ public sealed class LauncherSettingsStoreTests
 
         Assert.IsTrue(settings.ShowTrayIcon);
         Assert.IsFalse(settings.LaunchOnStartup);
+        Assert.AreEqual(ThemeMode.Dark, settings.ThemeMode);
+        Assert.AreEqual(MotionProfile.Snappy240, settings.MotionProfile);
         Assert.IsTrue(File.Exists(_settingsPath));
     }
 
@@ -52,6 +54,8 @@ public sealed class LauncherSettingsStoreTests
             LaunchOnStartup = true,
             ShowTrayIcon = false,
             ReduceMotion = true,
+            ThemeMode = ThemeMode.Light,
+            MotionProfile = MotionProfile.Reduced,
         });
 
         var reloaded = store.Load();
@@ -61,6 +65,8 @@ public sealed class LauncherSettingsStoreTests
         Assert.IsTrue(reloaded.LaunchOnStartup);
         Assert.IsFalse(reloaded.ShowTrayIcon);
         Assert.IsTrue(reloaded.ReduceMotion);
+        Assert.AreEqual(ThemeMode.Light, reloaded.ThemeMode);
+        Assert.AreEqual(MotionProfile.Reduced, reloaded.MotionProfile);
     }
 
     [TestMethod]
@@ -73,6 +79,8 @@ public sealed class LauncherSettingsStoreTests
             LaunchOnStartup = true,
             ShowTrayIcon = false,
             ReduceMotion = true,
+            ThemeMode = ThemeMode.System,
+            MotionProfile = MotionProfile.Reduced,
         });
 
         var reloaded = store.Load();
@@ -83,6 +91,8 @@ public sealed class LauncherSettingsStoreTests
         Assert.IsTrue(reloaded.LaunchOnStartup);
         Assert.IsFalse(reloaded.ShowTrayIcon);
         Assert.IsTrue(reloaded.ReduceMotion);
+        Assert.AreEqual(ThemeMode.System, reloaded.ThemeMode);
+        Assert.AreEqual(MotionProfile.Reduced, reloaded.MotionProfile);
         CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, persisted.Hotkey.Modifiers);
     }
 
@@ -96,7 +106,9 @@ public sealed class LauncherSettingsStoreTests
               "hotkey": null,
               "launchOnStartup": true,
               "showTrayIcon": false,
-              "reduceMotion": true
+              "reduceMotion": true,
+              "themeMode": "Light",
+              "motionProfile": "Reduced"
             }
             """);
         var store = new LauncherSettingsStore(_settingsPath);
@@ -108,6 +120,8 @@ public sealed class LauncherSettingsStoreTests
         Assert.IsTrue(reloaded.LaunchOnStartup);
         Assert.IsFalse(reloaded.ShowTrayIcon);
         Assert.IsTrue(reloaded.ReduceMotion);
+        Assert.AreEqual(ThemeMode.Light, reloaded.ThemeMode);
+        Assert.AreEqual(MotionProfile.Reduced, reloaded.MotionProfile);
     }
 
     [TestMethod]
@@ -123,7 +137,9 @@ public sealed class LauncherSettingsStoreTests
               },
               "launchOnStartup": true,
               "showTrayIcon": false,
-              "reduceMotion": true
+              "reduceMotion": true,
+              "themeMode": "System",
+              "motionProfile": "Reduced"
             }
             """);
         var store = new LauncherSettingsStore(_settingsPath);
@@ -135,6 +151,8 @@ public sealed class LauncherSettingsStoreTests
         Assert.IsTrue(reloaded.LaunchOnStartup);
         Assert.IsFalse(reloaded.ShowTrayIcon);
         Assert.IsTrue(reloaded.ReduceMotion);
+        Assert.AreEqual(ThemeMode.System, reloaded.ThemeMode);
+        Assert.AreEqual(MotionProfile.Reduced, reloaded.MotionProfile);
     }
 
     [TestMethod]
@@ -147,6 +165,8 @@ public sealed class LauncherSettingsStoreTests
             LaunchOnStartup = true,
             ShowTrayIcon = false,
             ReduceMotion = true,
+            ThemeMode = ThemeMode.Light,
+            MotionProfile = MotionProfile.Reduced,
         });
         File.SetAttributes(_settingsPath, FileAttributes.ReadOnly);
 
@@ -157,6 +177,8 @@ public sealed class LauncherSettingsStoreTests
         Assert.IsTrue(reloaded.LaunchOnStartup);
         Assert.IsFalse(reloaded.ShowTrayIcon);
         Assert.IsTrue(reloaded.ReduceMotion);
+        Assert.AreEqual(ThemeMode.Light, reloaded.ThemeMode);
+        Assert.AreEqual(MotionProfile.Reduced, reloaded.MotionProfile);
     }
 
     [TestMethod]
@@ -171,6 +193,81 @@ public sealed class LauncherSettingsStoreTests
             var path = LauncherSettingsStore.ResolveSettingsPath(root, "C:\\Ignored");
 
             Assert.AreEqual(Path.Combine(root, "data", "settings.json"), path);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ResolveSettingsPath_WhenLocalAppDataMissing_UsesSpecialFolder()
+    {
+        var originalUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        Environment.SetEnvironmentVariable("USERPROFILE", @"X:\RedirectedElsewhere");
+        try
+        {
+            var path = LauncherSettingsStore.ResolveSettingsPath("C:\\NotPortable", null);
+
+            Assert.AreEqual(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Winspot", "settings.json"),
+                path);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("USERPROFILE", originalUserProfile);
+        }
+    }
+
+    [TestMethod]
+    public void Load_WithUnknownEnumStrings_PreservesValidFieldsAndPersistsRepairedEnums()
+    {
+        File.WriteAllText(
+            _settingsPath,
+            """
+            {
+              "hotkey": {
+                "key": "K",
+                "modifiers": ["Control", "Shift"]
+              },
+              "launchOnStartup": true,
+              "showTrayIcon": false,
+              "reduceMotion": false,
+              "themeMode": "Neon",
+              "motionProfile": "WarpSpeed"
+            }
+            """);
+        var store = new LauncherSettingsStore(_settingsPath);
+
+        var reloaded = store.Load();
+        var persistedJson = File.ReadAllText(_settingsPath);
+
+        Assert.AreEqual("K", reloaded.Hotkey.Key);
+        CollectionAssert.AreEquivalent(new List<string> { "Control", "Shift" }, reloaded.Hotkey.Modifiers);
+        Assert.IsTrue(reloaded.LaunchOnStartup);
+        Assert.IsFalse(reloaded.ShowTrayIcon);
+        Assert.AreEqual(ThemeMode.Dark, reloaded.ThemeMode);
+        Assert.AreEqual(MotionProfile.Snappy240, reloaded.MotionProfile);
+        StringAssert.Contains(persistedJson, "\"themeMode\": \"Dark\"");
+        StringAssert.Contains(persistedJson, "\"motionProfile\": \"Snappy240\"");
+    }
+
+    [TestMethod]
+    public void ResolvePluginsPath_WhenPortableMarkerExists_UsesExecutablePluginsFolder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"winspot-portable-plugins-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Winspot.portable"), string.Empty);
+
+            var path = AppPaths.ResolvePluginsPath(root, "C:\\Ignored");
+
+            Assert.AreEqual(Path.Combine(root, "plugins"), path);
+            Assert.IsTrue(AppPaths.IsPortable(root));
         }
         finally
         {

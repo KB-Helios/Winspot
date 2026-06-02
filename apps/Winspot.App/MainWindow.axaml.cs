@@ -1,7 +1,7 @@
 using System.ComponentModel;
-using System.Diagnostics;
 
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -18,10 +18,9 @@ namespace Winspot_App;
 public sealed partial class MainWindow : Window
 {
     private static readonly TimeSpan RevealDuration = TimeSpan.FromMilliseconds(160);
-    private static readonly TimeSpan ResizeDuration = TimeSpan.FromMilliseconds(190);
     private static readonly CubicEaseOut RevealEasing = new();
 
-    private CancellationTokenSource? _boundsAnimationCancellation;
+    private readonly Transitions? _resultsHostTransitions;
     private GlobalHotkeyService? _hotkeyService;
     private HotkeyBinding _hotkey;
 
@@ -37,11 +36,9 @@ public sealed partial class MainWindow : Window
         DataContext = ViewModel;
         InitializeComponent();
 
+        _resultsHostTransitions = ResultsHost.Transitions;
         Height = LauncherWindowLayout.CompactHeight;
-        if (MotionSettings.ReduceMotion)
-        {
-            ResultsHost.Transitions = null;
-        }
+        ApplyMotionProfile(settings.MotionProfile);
 
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Opened += OnOpened;
@@ -86,6 +83,12 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
+    internal void ApplyMotionProfile(MotionProfile motionProfile)
+    {
+        MotionSettings.Profile = motionProfile;
+        ResultsHost.Transitions = MotionSettings.ReduceMotion ? null : _resultsHostTransitions;
+    }
+
     public void FocusSearch()
     {
         SearchBox.Focus(NavigationMethod.Unspecified);
@@ -122,8 +125,6 @@ public sealed partial class MainWindow : Window
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
-        _boundsAnimationCancellation?.Cancel();
-        _boundsAnimationCancellation?.Dispose();
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
         if (_hotkeyService is not null)
         {
@@ -302,60 +303,13 @@ public sealed partial class MainWindow : Window
         visual.StartAnimation("Offset", offsetAnimation);
     }
 
-    private async Task AnimateBoundsAsync(Rect targetBounds, double scaling)
+    private Task AnimateBoundsAsync(Rect targetBounds, double scaling)
     {
-        var previous = _boundsAnimationCancellation;
-        previous?.Cancel();
-        previous?.Dispose();
-
-        var cancellation = new CancellationTokenSource();
-        _boundsAnimationCancellation = cancellation;
-
-        var startHeight = Height;
-        var startPosition = Position;
         var targetPosition = LauncherWindowLayout.ToPixels(targetBounds, scaling);
         Width = targetBounds.Width;
-
-        if (MotionSettings.ReduceMotion)
-        {
-            Height = targetBounds.Height;
-            Position = targetPosition;
-            return;
-        }
-
-        try
-        {
-            // Drive the OS-level window resize off elapsed wall-clock time rather
-            // than a fixed frame count, so it stays smooth when frames are dropped.
-            var stopwatch = Stopwatch.StartNew();
-            while (true)
-            {
-                if (cancellation.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                var progress = Math.Clamp(stopwatch.Elapsed.TotalMilliseconds / ResizeDuration.TotalMilliseconds, 0, 1);
-                var eased = 1 - Math.Pow(1 - progress, 3);
-                Height = startHeight + ((targetBounds.Height - startHeight) * eased);
-                Position = new PixelPoint(
-                    targetPosition.X,
-                    (int)Math.Round(startPosition.Y + ((targetPosition.Y - startPosition.Y) * eased)));
-
-                if (progress >= 1)
-                {
-                    break;
-                }
-
-                await Task.Delay(16, cancellation.Token).ConfigureAwait(true);
-            }
-
-            Height = targetBounds.Height;
-            Position = targetPosition;
-        }
-        catch (OperationCanceledException)
-        {
-        }
+        Height = targetBounds.Height;
+        Position = targetPosition;
+        return Task.CompletedTask;
     }
 
     private bool RegisterHotkey()
