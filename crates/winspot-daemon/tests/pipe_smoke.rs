@@ -587,6 +587,67 @@ mod windows_tests {
     }
 
     #[tokio::test]
+    async fn daemon_serve_pipe_once_uses_configured_plugin_dir_for_diagnostics() {
+        let pipe_name = format!(r"\\.\pipe\winspot-plugin-config-{}", std::process::id());
+        let plugin_root =
+            std::env::temp_dir().join(format!("winspot-plugin-config-{}", std::process::id()));
+        fs::create_dir_all(&plugin_root).expect("create plugin dir");
+        fs::write(
+            plugin_root.join("custom.json"),
+            r#"{"id":"custom","name":"Custom Plugin","capabilities":[],"enabled":true}"#,
+        )
+        .expect("write custom manifest");
+        let server_name = pipe_name.clone();
+        let server_plugin_root = plugin_root.clone();
+        let server = tokio::spawn(async move {
+            let engine = SearchEngine::from_results(Vec::new());
+            serve_pipe_once(
+                PipeConfig {
+                    pipe_name: server_name,
+                    usage_log_path: None,
+                    plugins_dir: Some(server_plugin_root),
+                },
+                &engine,
+            )
+            .await
+            .expect("pipe server completes");
+        });
+
+        let client = open_pipe_with_retry(&pipe_name).await;
+        let mut client = BufReader::new(client);
+        let request = IpcEnvelope::request(
+            "plugins-1",
+            IpcPayload::PluginDiagnosticsRequested(PluginDiagnosticsRequested {}),
+        );
+        let mut request_json = serde_json::to_string(&request).expect("serialize diagnostics");
+        request_json.push('\n');
+        client
+            .get_mut()
+            .write_all(request_json.as_bytes())
+            .await
+            .expect("write diagnostics request");
+
+        let mut line = String::new();
+        timeout(Duration::from_secs(2), client.read_line(&mut line))
+            .await
+            .expect("diagnostics response before timeout")
+            .expect("read diagnostics response");
+        let response: IpcEnvelope =
+            serde_json::from_str(line.trim()).expect("decode diagnostics response");
+
+        match response.payload {
+            IpcPayload::PluginDiagnosticsReady(ready) => {
+                let entries = ready.report["entries"].as_array().expect("entries array");
+                assert!(entries.iter().any(|entry| entry["id"] == "custom"));
+            }
+            other => panic!("expected PluginDiagnosticsReady, got {other:?}"),
+        }
+
+        server.await.expect("server task joins");
+        fs::remove_dir_all(plugin_root).expect("cleanup plugin dir");
+    }
+
+    #[tokio::test]
     async fn daemon_refuses_untrusted_user_plugin_command() {
         let pipe_name = format!(r"\\.\pipe\winspot-plugin-auth-{}", std::process::id());
         let plugin_root =

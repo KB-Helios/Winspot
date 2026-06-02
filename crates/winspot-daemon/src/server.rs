@@ -184,7 +184,13 @@ fn build_plugin_registry(
 }
 
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
-    let runtime = DaemonRuntime::from_engine(engine.clone());
+    let (plugin_registry, plugin_validation_report) =
+        build_plugin_registry(config.plugins_dir.as_deref());
+    let runtime = DaemonRuntime {
+        engine: engine.clone(),
+        plugin_registry,
+        plugin_validation_report,
+    };
     serve_runtime_pipe_once(config, &runtime).await
 }
 

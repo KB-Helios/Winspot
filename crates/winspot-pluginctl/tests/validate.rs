@@ -66,6 +66,28 @@ fn validate_invalid_fixture_exits_nonzero() {
 
     assert!(codes.contains(&"manifest_parse_failed"));
     assert!(codes.contains(&"invalid_manifest"));
+    assert!(codes.contains(&"duplicate_plugin_id"));
+}
+
+#[test]
+fn validate_missing_plugins_dir_exits_with_usage_error() {
+    let missing = fixture_dir("missing");
+    let output = pluginctl()
+        .args([
+            "validate",
+            "--plugins-dir",
+            missing.to_str().expect("fixture path"),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("run pluginctl");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--plugins-dir does not exist or is not a directory")
+    );
 }
 
 #[test]

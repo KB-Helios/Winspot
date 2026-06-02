@@ -293,14 +293,26 @@ impl PluginRegistry {
         path: impl AsRef<Path>,
     ) -> anyhow::Result<PluginValidationReport> {
         let mut report = PluginValidationReport::default();
-        let Ok(entries) = fs::read_dir(path) else {
-            return Ok(report);
+        let path = path.as_ref();
+        let entries = match fs::read_dir(path) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(report);
+            }
+            Err(error) => {
+                anyhow::bail!("failed to read directory {}: {error}", path.display());
+            }
         };
 
         let mut paths: Vec<PathBuf> = entries
             .flatten()
             .map(|entry| entry.path())
-            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+            .filter(|path| {
+                path.extension()
+                    .and_then(|value| value.to_str())
+                    .map(|extension| extension.eq_ignore_ascii_case("json"))
+                    .unwrap_or(false)
+            })
             .collect();
         paths.sort();
 

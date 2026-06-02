@@ -165,6 +165,55 @@ fn load_dir_into_merges_user_manifests_with_built_ins() {
 }
 
 #[test]
+fn load_dir_into_accepts_case_insensitive_json_extensions() {
+    let root = unique_temp_dir("case-ext");
+    fs::write(
+        root.join("custom.JSON"),
+        r#"{"id":"custom","name":"Custom Plugin","capabilities":[],"enabled":true}"#,
+    )
+    .expect("write manifest");
+
+    let registry = PluginRegistry::load_dir(&root).expect("load registry");
+
+    assert_eq!(
+        registry.internal_results("Custom")[0].title,
+        "Custom Plugin"
+    );
+
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn load_dir_into_with_report_propagates_non_directory_errors() {
+    let root = unique_temp_dir("not-dir");
+    let not_directory = root.join("plugins.json");
+    fs::write(&not_directory, b"not a directory").expect("write file");
+    let mut registry = PluginRegistry::default();
+
+    let error = registry
+        .load_dir_into_with_report(&not_directory)
+        .expect_err("file path should not be treated as empty plugin dir");
+
+    assert!(error.to_string().contains("failed to read directory"));
+
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn load_dir_into_with_report_tolerates_missing_directory() {
+    let missing =
+        std::env::temp_dir().join(format!("winspot-plugins-missing-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&missing);
+    let mut registry = PluginRegistry::default();
+
+    let report = registry
+        .load_dir_into_with_report(&missing)
+        .expect("missing directory is allowed for daemon startup");
+
+    assert!(report.entries.is_empty());
+}
+
+#[test]
 fn load_dir_into_skips_duplicate_and_invalid_manifests() {
     let root = unique_temp_dir("dupe");
     // Reuses a built-in id -> rejected as a duplicate, built-in preserved.

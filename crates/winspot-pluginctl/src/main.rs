@@ -48,7 +48,16 @@ fn validate(args: &[String]) -> anyhow::Result<ExitCode> {
     }
 
     let plugins_dir = plugins_dir.ok_or_else(|| anyhow::anyhow!("--plugins-dir is required"))?;
-    let (_registry, report) = winspot_plugins::PluginRegistry::load_dir_with_report(&plugins_dir)?;
+    if !plugins_dir.is_dir() {
+        anyhow::bail!(
+            "--plugins-dir does not exist or is not a directory: {}",
+            plugins_dir.display()
+        );
+    }
+
+    let (mut registry, _builtins_report) =
+        winspot_plugins::PluginRegistry::with_built_ins_with_report();
+    let report = registry.load_dir_into_with_report(&plugins_dir)?;
 
     match format {
         OutputFormat::Human => println!("{}", human_report(&report)),
