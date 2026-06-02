@@ -11,7 +11,7 @@ namespace Winspot_App.Tests.Build;
 public sealed class WinspotAppProjectTests
 {
     [TestMethod]
-    public void CopyWinspotDaemonTargets_DoNotSkipBuildDependencyWhenDaemonIsMissing()
+    public void CopyWinspotDaemonTargets_WhenDaemonIsMissing_BuildsBeforeCopyCondition()
     {
         var project = XDocument.Load(FindAppProjectFile());
 

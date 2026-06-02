@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 
 using Winspot_App.Models;
 using Winspot_App.Services;
+using Winspot_App.Strings;
 
 namespace Winspot_App.ViewModels;
 
@@ -133,7 +134,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         var settings = BuildSettings();
         if (settings.Hotkey.IsReservedByWindows())
         {
-            StatusMessage = "That hotkey is reserved by Windows. Choose a different chord.";
+            StatusMessage = SettingsStatusMessages.ReservedWindowsHotkey;
             return false;
         }
 

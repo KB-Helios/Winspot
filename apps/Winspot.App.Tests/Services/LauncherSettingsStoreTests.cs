@@ -25,6 +25,7 @@ public sealed class LauncherSettingsStoreTests
     {
         if (File.Exists(_settingsPath))
         {
+            File.SetAttributes(_settingsPath, FileAttributes.Normal);
             File.Delete(_settingsPath);
         }
     }
@@ -83,6 +84,79 @@ public sealed class LauncherSettingsStoreTests
         Assert.IsFalse(reloaded.ShowTrayIcon);
         Assert.IsTrue(reloaded.ReduceMotion);
         CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, persisted.Hotkey.Modifiers);
+    }
+
+    [TestMethod]
+    public void Load_WithNullHotkey_ReplacesHotkeyWithDefaultAndPreservesOtherSettings()
+    {
+        File.WriteAllText(
+            _settingsPath,
+            """
+            {
+              "hotkey": null,
+              "launchOnStartup": true,
+              "showTrayIcon": false,
+              "reduceMotion": true
+            }
+            """);
+        var store = new LauncherSettingsStore(_settingsPath);
+
+        var reloaded = store.Load();
+
+        Assert.AreEqual("Space", reloaded.Hotkey.Key);
+        CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, reloaded.Hotkey.Modifiers);
+        Assert.IsTrue(reloaded.LaunchOnStartup);
+        Assert.IsFalse(reloaded.ShowTrayIcon);
+        Assert.IsTrue(reloaded.ReduceMotion);
+    }
+
+    [TestMethod]
+    public void Load_WithMalformedHotkey_ReplacesHotkeyWithDefaultAndPreservesOtherSettings()
+    {
+        File.WriteAllText(
+            _settingsPath,
+            """
+            {
+              "hotkey": {
+                "key": "Space",
+                "modifiers": null
+              },
+              "launchOnStartup": true,
+              "showTrayIcon": false,
+              "reduceMotion": true
+            }
+            """);
+        var store = new LauncherSettingsStore(_settingsPath);
+
+        var reloaded = store.Load();
+
+        Assert.AreEqual("Space", reloaded.Hotkey.Key);
+        CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, reloaded.Hotkey.Modifiers);
+        Assert.IsTrue(reloaded.LaunchOnStartup);
+        Assert.IsFalse(reloaded.ShowTrayIcon);
+        Assert.IsTrue(reloaded.ReduceMotion);
+    }
+
+    [TestMethod]
+    public void Load_WhenHotkeyRepairCannotBePersisted_ReturnsRepairedSettings()
+    {
+        var store = new LauncherSettingsStore(_settingsPath);
+        store.Save(new LauncherSettings
+        {
+            Hotkey = new HotkeyBinding { Key = "Space", Modifiers = new List<string> { "Win" } },
+            LaunchOnStartup = true,
+            ShowTrayIcon = false,
+            ReduceMotion = true,
+        });
+        File.SetAttributes(_settingsPath, FileAttributes.ReadOnly);
+
+        var reloaded = store.Load();
+
+        Assert.AreEqual("Space", reloaded.Hotkey.Key);
+        CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, reloaded.Hotkey.Modifiers);
+        Assert.IsTrue(reloaded.LaunchOnStartup);
+        Assert.IsFalse(reloaded.ShowTrayIcon);
+        Assert.IsTrue(reloaded.ReduceMotion);
     }
 
     [TestMethod]

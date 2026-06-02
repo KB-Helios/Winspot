@@ -7,9 +7,12 @@ public sealed class HotkeyBinding
     public List<string> Modifiers { get; init; } = new() { "Control", "Alt" };
 
     public bool IsReservedByWindows() =>
-        NormalizeKey(Key).Equals("Space", StringComparison.OrdinalIgnoreCase)
+        !string.IsNullOrWhiteSpace(Key)
+        && NormalizeKey(Key).Equals("Space", StringComparison.OrdinalIgnoreCase)
+        && Modifiers is not null
         && Modifiers.Any(modifier =>
-            NormalizeModifier(modifier).Equals("Win", StringComparison.OrdinalIgnoreCase));
+            !string.IsNullOrWhiteSpace(modifier)
+            && NormalizeModifier(modifier).Equals("Win", StringComparison.OrdinalIgnoreCase));
 
     /// Renders the binding as a space-separated chord (e.g. "Ctrl Alt Space")
     /// for display in the launcher hint, matching the order modifiers are shown

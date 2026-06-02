@@ -45,7 +45,7 @@ public sealed class LauncherVisualStyleTests
     }
 
     [TestMethod]
-    public void Tokens_RemoveFocusedTextBoxGlow()
+    public void Tokens_WhenFocusedTextBoxSelected_RemovesWhiteGlow()
     {
         var tokens = File.ReadAllText(FindTokensAxaml());
 

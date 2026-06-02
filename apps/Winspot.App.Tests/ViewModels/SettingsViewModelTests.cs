@@ -7,6 +7,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using Winspot_App.Models;
 using Winspot_App.Services;
+using Winspot_App.Strings;
 using Winspot_App.ViewModels;
 
 namespace Winspot_App.Tests.ViewModels;
@@ -131,7 +132,7 @@ public sealed class SettingsViewModelTests
         };
 
         Assert.IsFalse(viewModel.TrySave());
-        Assert.IsTrue(viewModel.StatusMessage.Contains("reserved", StringComparison.OrdinalIgnoreCase));
+        Assert.AreEqual(SettingsStatusMessages.ReservedWindowsHotkey, viewModel.StatusMessage);
         CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, store.Load().Hotkey.Modifiers);
     }
 

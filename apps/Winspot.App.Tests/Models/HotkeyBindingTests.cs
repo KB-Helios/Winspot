@@ -62,4 +62,40 @@ public sealed class HotkeyBindingTests
 
         Assert.IsFalse(binding.IsReservedByWindows());
     }
+
+    [TestMethod]
+    public void IsReservedByWindows_WhenKeyIsNull_ReturnsFalse()
+    {
+        var binding = new HotkeyBinding
+        {
+            Key = null!,
+            Modifiers = new List<string> { "Win" },
+        };
+
+        Assert.IsFalse(binding.IsReservedByWindows());
+    }
+
+    [TestMethod]
+    public void IsReservedByWindows_WhenModifiersAreNull_ReturnsFalse()
+    {
+        var binding = new HotkeyBinding
+        {
+            Key = "Space",
+            Modifiers = null!,
+        };
+
+        Assert.IsFalse(binding.IsReservedByWindows());
+    }
+
+    [TestMethod]
+    public void IsReservedByWindows_WhenModifierEntryIsNull_IgnoresNullEntry()
+    {
+        var binding = new HotkeyBinding
+        {
+            Key = "Space",
+            Modifiers = new List<string> { null!, "Win" },
+        };
+
+        Assert.IsTrue(binding.IsReservedByWindows());
+    }
 }
