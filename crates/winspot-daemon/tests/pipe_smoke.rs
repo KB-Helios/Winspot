@@ -12,9 +12,13 @@ mod windows_tests {
     };
     use winspot_core::{
         ActionKind, ActionRequested, Hello, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
-        MAX_PROTOCOL_VERSION, PreviewRequested, SearchResult, SearchResultKind, SearchStarted,
+        MAX_PROTOCOL_VERSION, PluginDiagnosticsRequested, PreviewRequested, SearchResult,
+        SearchResultKind, SearchStarted,
     };
-    use winspot_daemon::server::{PipeConfig, build_search_engine, serve_pipe_once};
+    use winspot_daemon::server::{
+        PipeConfig, build_daemon_runtime, build_search_engine, serve_pipe_once,
+        serve_runtime_pipe_once,
+    };
     use winspot_search::{
         engine::SearchEngine,
         usage::{UsageEvent, UsageStore},
@@ -516,5 +520,133 @@ mod windows_tests {
         }
 
         server.await.expect("server task joins");
+    }
+
+    #[tokio::test]
+    async fn daemon_returns_plugin_validation_diagnostics() {
+        let pipe_name = format!(r"\\.\pipe\winspot-plugin-diag-{}", std::process::id());
+        let plugin_root =
+            std::env::temp_dir().join(format!("winspot-plugin-diag-{}", std::process::id()));
+        fs::create_dir_all(&plugin_root).expect("create plugin dir");
+        fs::write(
+            plugin_root.join("bad-id.json"),
+            r#"{"id":"Bad Id","name":"Bad","capabilities":[],"enabled":true}"#,
+        )
+        .expect("write invalid manifest");
+        let server_name = pipe_name.clone();
+        let server_plugin_root = plugin_root.clone();
+        let server = tokio::spawn(async move {
+            let config = PipeConfig {
+                pipe_name: server_name.clone(),
+                usage_log_path: None,
+                plugins_dir: Some(server_plugin_root),
+            };
+            let runtime = build_daemon_runtime(&config).expect("build runtime");
+            serve_runtime_pipe_once(config, &runtime)
+                .await
+                .expect("pipe server completes");
+        });
+
+        let client = open_pipe_with_retry(&pipe_name).await;
+        let mut client = BufReader::new(client);
+        let request = IpcEnvelope::request(
+            "plugins-1",
+            IpcPayload::PluginDiagnosticsRequested(PluginDiagnosticsRequested {}),
+        );
+        let mut request_json = serde_json::to_string(&request).expect("serialize diagnostics");
+        request_json.push('\n');
+        client
+            .get_mut()
+            .write_all(request_json.as_bytes())
+            .await
+            .expect("write diagnostics request");
+
+        let mut line = String::new();
+        timeout(Duration::from_secs(2), client.read_line(&mut line))
+            .await
+            .expect("diagnostics response before timeout")
+            .expect("read diagnostics response");
+        let response: IpcEnvelope =
+            serde_json::from_str(line.trim()).expect("decode diagnostics response");
+
+        match response.payload {
+            IpcPayload::PluginDiagnosticsReady(ready) => {
+                let entries = ready.report["entries"].as_array().expect("entries array");
+                let codes: Vec<&str> = entries
+                    .iter()
+                    .flat_map(|entry| entry["issues"].as_array().expect("issues"))
+                    .map(|issue| issue["code"].as_str().expect("issue code"))
+                    .collect();
+                assert!(codes.contains(&"invalid_manifest"));
+            }
+            other => panic!("expected PluginDiagnosticsReady, got {other:?}"),
+        }
+
+        server.await.expect("server task joins");
+        fs::remove_dir_all(plugin_root).expect("cleanup plugin dir");
+    }
+
+    #[tokio::test]
+    async fn daemon_refuses_untrusted_user_plugin_command() {
+        let pipe_name = format!(r"\\.\pipe\winspot-plugin-auth-{}", std::process::id());
+        let plugin_root =
+            std::env::temp_dir().join(format!("winspot-plugin-auth-{}", std::process::id()));
+        fs::create_dir_all(&plugin_root).expect("create plugin dir");
+        fs::write(
+            plugin_root.join("custom.json"),
+            r#"{"id":"custom","name":"Custom Plugin","capabilities":["PluginExecution"],"enabled":true}"#,
+        )
+        .expect("write custom manifest");
+        let server_name = pipe_name.clone();
+        let server_plugin_root = plugin_root.clone();
+        let server = tokio::spawn(async move {
+            let config = PipeConfig {
+                pipe_name: server_name.clone(),
+                usage_log_path: None,
+                plugins_dir: Some(server_plugin_root),
+            };
+            let runtime = build_daemon_runtime(&config).expect("build runtime");
+            serve_runtime_pipe_once(config, &runtime)
+                .await
+                .expect("pipe server completes");
+        });
+
+        let client = open_pipe_with_retry(&pipe_name).await;
+        let mut client = BufReader::new(client);
+        let request = IpcEnvelope::request(
+            "plugin-action-1",
+            IpcPayload::ActionRequested(ActionRequested {
+                action_id: "plugin-action-1".to_string(),
+                result_id: "plugin:custom".to_string(),
+                title: "Custom Plugin".to_string(),
+                primary_action: ActionKind::PluginCommand,
+            }),
+        );
+        let mut request_json = serde_json::to_string(&request).expect("serialize action");
+        request_json.push('\n');
+        client
+            .get_mut()
+            .write_all(request_json.as_bytes())
+            .await
+            .expect("write plugin action request");
+
+        let mut line = String::new();
+        timeout(Duration::from_secs(2), client.read_line(&mut line))
+            .await
+            .expect("action response before timeout")
+            .expect("read action response");
+        let response: IpcEnvelope =
+            serde_json::from_str(line.trim()).expect("decode action response");
+
+        match response.payload {
+            IpcPayload::ActionCompleted(completed) => {
+                assert!(!completed.succeeded);
+                assert!(completed.message.contains("not trusted"));
+            }
+            other => panic!("expected ActionCompleted, got {other:?}"),
+        }
+
+        server.await.expect("server task joins");
+        fs::remove_dir_all(plugin_root).expect("cleanup plugin dir");
     }
 }

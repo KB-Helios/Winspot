@@ -14,11 +14,11 @@ use winspot_actions::{ActionExecutor, ActionPolicy};
 
 use crate::pipe_security::PipeSecurity;
 use winspot_core::{
-    BackendError, HelloAccepted, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
-    MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PreviewChunk, PreviewReady, PreviewRequested,
-    ResultBatch, SearchCompleted,
+    ActionKind, BackendError, HelloAccepted, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
+    MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PluginDiagnosticsReady, PreviewChunk, PreviewReady,
+    PreviewRequested, ResultBatch, SearchCompleted,
 };
-use winspot_plugins::PluginRegistry;
+use winspot_plugins::{PluginRegistry, PluginValidationReport};
 use winspot_preview::{DefaultPreviewProvider, PreviewProvider};
 use winspot_search::{
     engine::SearchEngine,
@@ -54,8 +54,26 @@ impl Default for PipeConfig {
     }
 }
 
+#[derive(Clone)]
+pub struct DaemonRuntime {
+    pub engine: SearchEngine,
+    pub plugin_registry: Arc<PluginRegistry>,
+    pub plugin_validation_report: Arc<PluginValidationReport>,
+}
+
+impl DaemonRuntime {
+    pub fn from_engine(engine: SearchEngine) -> Self {
+        let (registry, report) = PluginRegistry::with_built_ins_with_report();
+        Self {
+            engine,
+            plugin_registry: Arc::new(registry),
+            plugin_validation_report: Arc::new(report),
+        }
+    }
+}
+
 pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
-    let engine = build_search_engine(&config).context("build search engine")?;
+    let runtime = build_daemon_runtime(&config).context("build daemon runtime")?;
 
     // Reserve the first pipe instance as a single-instance guard: if another
     // daemon already owns this pipe name, `first_pipe_instance(true)` fails and
@@ -74,7 +92,7 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
                 .with_context(|| format!("create first named pipe {}", config.pipe_name));
         }
     };
-    if let Err(error) = serve_connection(first, &engine, &config).await {
+    if let Err(error) = serve_connection(first, &runtime, &config).await {
         eprintln!("winspot-daemon: connection error: {error:?}");
     }
 
@@ -84,7 +102,7 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
         // A single client connection failing (abrupt disconnect, broken pipe,
         // malformed payload) must not take down the daemon: log it and keep
         // accepting subsequent connections.
-        if let Err(error) = serve_connection(server, &engine, &config).await {
+        if let Err(error) = serve_connection(server, &runtime, &config).await {
             eprintln!("winspot-daemon: connection error: {error:?}");
         }
     }
@@ -113,15 +131,17 @@ fn create_secured_pipe(name: &str, first_instance: bool) -> std::io::Result<Name
     }
 }
 
-pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> {
+pub fn build_daemon_runtime(config: &PipeConfig) -> anyhow::Result<DaemonRuntime> {
     let usage = match &config.usage_log_path {
         Some(path) => UsageStore::new(path.clone())
             .load_snapshot()
             .with_context(|| format!("load usage log {}", path.display()))?,
         None => UsageSnapshot::default(),
     };
+    let (plugin_registry, plugin_validation_report) =
+        build_plugin_registry(config.plugins_dir.as_deref());
 
-    Ok(SearchEngine::from_refreshable_providers_with_usage(
+    let engine = SearchEngine::from_refreshable_providers_with_usage(
         default_search_providers(),
         usage,
         CANDIDATE_TTL_SECONDS,
@@ -129,37 +149,57 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
     )
     .with_dynamic_provider(Arc::new(CalculatorProvider))
     .with_dynamic_provider(Arc::new(UnitConversionProvider))
-    .with_dynamic_provider(Arc::new(PluginProvider::new(build_plugin_registry(
-        config.plugins_dir.as_deref(),
-    )))))
+    .with_dynamic_provider(Arc::new(PluginProvider::new(Arc::clone(&plugin_registry))));
+
+    Ok(DaemonRuntime {
+        engine,
+        plugin_registry,
+        plugin_validation_report,
+    })
+}
+
+pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> {
+    build_daemon_runtime(config).map(|runtime| runtime.engine)
 }
 
 /// Builds the plugin registry the daemon serves from: the built-in plugin
 /// identities plus any valid user manifests found in `plugins_dir`. A missing
 /// directory or individual malformed manifest is tolerated so a bad plugin can
 /// never stop the daemon from starting.
-fn build_plugin_registry(plugins_dir: Option<&std::path::Path>) -> Arc<PluginRegistry> {
-    let mut registry = PluginRegistry::with_built_ins();
+fn build_plugin_registry(
+    plugins_dir: Option<&std::path::Path>,
+) -> (Arc<PluginRegistry>, Arc<PluginValidationReport>) {
+    let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
     if let Some(dir) = plugins_dir
-        && let Err(error) = registry.load_dir_into(dir)
+        && let Err(error) = registry
+            .load_dir_into_with_report(dir)
+            .map(|user_report| report.extend(user_report))
     {
         eprintln!(
             "winspot-daemon: failed to scan plugins directory {}: {error:?}",
             dir.display()
         );
     }
-    Arc::new(registry)
+    (Arc::new(registry), Arc::new(report))
 }
 
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
+    let runtime = DaemonRuntime::from_engine(engine.clone());
+    serve_runtime_pipe_once(config, &runtime).await
+}
+
+pub async fn serve_runtime_pipe_once(
+    config: PipeConfig,
+    runtime: &DaemonRuntime,
+) -> anyhow::Result<()> {
     let server = create_secured_pipe(&config.pipe_name, false)
         .with_context(|| format!("create named pipe {}", config.pipe_name))?;
-    serve_connection(server, engine, &config).await
+    serve_connection(server, runtime, &config).await
 }
 
 async fn serve_connection(
     server: NamedPipeServer,
-    engine: &SearchEngine,
+    runtime: &DaemonRuntime,
     config: &PipeConfig,
 ) -> anyhow::Result<()> {
     server
@@ -187,7 +227,7 @@ async fn serve_connection(
             break;
         }
 
-        let (responses, close_after) = handle_line(line.trim(), engine, config)?;
+        let (responses, close_after) = handle_line(line.trim(), runtime, config)?;
         for response in responses {
             write_envelope(reader.get_mut(), &response).await?;
         }
@@ -202,7 +242,7 @@ async fn serve_connection(
 
 fn handle_line(
     line: &str,
-    engine: &SearchEngine,
+    runtime: &DaemonRuntime,
     config: &PipeConfig,
 ) -> anyhow::Result<(Vec<IpcEnvelope>, bool)> {
     let envelope: IpcEnvelope = serde_json::from_str(line).context("decode IPC envelope")?;
@@ -249,7 +289,7 @@ fn handle_line(
             ))
         }
         IpcPayload::SearchStarted(search) => {
-            let results = engine.search(&search.text, 20);
+            let results = runtime.engine.search(&search.text, 20);
             let batch = ResultBatch {
                 query_id: search.query_id.clone(),
                 is_final: true,
@@ -271,7 +311,7 @@ fn handle_line(
             ))
         }
         IpcPayload::ActionRequested(action) => {
-            let completed = handle_action(action, engine, config);
+            let completed = handle_action(action, runtime, config);
             Ok((
                 vec![IpcEnvelope::request(
                     request_id,
@@ -291,6 +331,16 @@ fn handle_line(
                 true,
             ))
         }
+        IpcPayload::PluginDiagnosticsRequested(_) => Ok((
+            vec![IpcEnvelope::request(
+                request_id,
+                IpcPayload::PluginDiagnosticsReady(PluginDiagnosticsReady {
+                    report: serde_json::to_value(runtime.plugin_validation_report.as_ref())
+                        .context("serialize plugin validation report")?,
+                }),
+            )],
+            true,
+        )),
         IpcPayload::CancelRequest(cancel) => Ok((
             vec![IpcEnvelope::request(
                 request_id,
@@ -350,17 +400,29 @@ fn build_preview(preview: PreviewRequested) -> PreviewReady {
 
 fn handle_action(
     action: winspot_core::ActionRequested,
-    engine: &SearchEngine,
+    runtime: &DaemonRuntime,
     config: &PipeConfig,
 ) -> winspot_core::ActionCompleted {
     let now = current_unix_seconds();
+    if action.primary_action == ActionKind::PluginCommand
+        && let Err(error) = runtime
+            .plugin_registry
+            .ensure_plugin_command_allowed(&action.result_id)
+    {
+        return winspot_core::ActionCompleted {
+            action_id: action.action_id,
+            succeeded: false,
+            message: error.to_string(),
+        };
+    }
+
     let completed = ActionExecutor::new(ActionPolicy::allow_all_local()).execute(action.clone());
     if !completed.succeeded {
         return completed;
     }
 
     match record_usage(&action, now, config).map(|_| {
-        engine.record_usage(&action.result_id, now);
+        runtime.engine.record_usage(&action.result_id, now);
         completed.message.clone()
     }) {
         Ok(message) => winspot_core::ActionCompleted {

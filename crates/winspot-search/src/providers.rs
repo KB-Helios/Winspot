@@ -595,7 +595,7 @@ impl SearchProvider for BrowserHistoryProvider {
 /// Builds the search result for a plugin identity, including the executable
 /// action chips supported for that plugin. Shared by the built-in-only provider
 /// and the registry-backed [`PluginProvider`] so both render identically.
-fn plugin_result(id: &str, name: &str) -> SearchResult {
+fn plugin_result(id: &str, name: &str, executable: bool) -> SearchResult {
     SearchResult {
         id: format!("plugin:{id}"),
         title: name.to_string(),
@@ -603,7 +603,11 @@ fn plugin_result(id: &str, name: &str) -> SearchResult {
         kind: SearchResultKind::Plugin,
         score: 0.0,
         primary_action: ActionKind::PluginCommand,
-        actions: executable_plugin_actions(id),
+        actions: if executable {
+            vec![plugin_command_action()]
+        } else {
+            Vec::new()
+        },
         source: Some("plugin".to_string()),
         icon_hint: None,
     }
@@ -620,7 +624,13 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
             .filter(|manifest| {
                 manifest.enabled && manifest.name.to_lowercase().contains(&normalized)
             })
-            .map(|manifest| plugin_result(&manifest.id, &manifest.name))
+            .map(|manifest| {
+                plugin_result(
+                    &manifest.id,
+                    &manifest.name,
+                    !executable_plugin_actions(&manifest.id).is_empty(),
+                )
+            })
             .collect()
     }
 }
@@ -647,7 +657,13 @@ impl DynamicSearchProvider for PluginProvider {
         self.registry
             .enabled_manifests()
             .filter(|manifest| manifest.name.to_lowercase().contains(&normalized))
-            .map(|manifest| plugin_result(&manifest.id, &manifest.name))
+            .map(|manifest| {
+                plugin_result(
+                    &manifest.id,
+                    &manifest.name,
+                    self.registry.plugin_has_executable_action(&manifest.id),
+                )
+            })
             .collect()
     }
 }

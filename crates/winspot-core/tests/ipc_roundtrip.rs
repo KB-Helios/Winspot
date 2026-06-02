@@ -1,7 +1,8 @@
 use winspot_core::{
     ActionKind, ActionRequested, CancelRequest, Hello, HelloAccepted, IpcEnvelope, IpcPayload,
-    MAX_JSON_LINE_BYTES, MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PreviewChunk,
-    PreviewRequested, SearchCompleted, SearchResult, SearchResultKind, SearchStarted,
+    MAX_JSON_LINE_BYTES, MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PluginDiagnosticsReady,
+    PluginDiagnosticsRequested, PreviewChunk, PreviewRequested, SearchCompleted, SearchResult,
+    SearchResultKind, SearchStarted,
 };
 
 #[test]
@@ -176,5 +177,37 @@ fn preview_request_round_trips_selected_result_metadata() {
             assert_eq!(preview.result.title, "Roadmap.md");
         }
         other => panic!("expected PreviewRequested, got {other:?}"),
+    }
+}
+
+#[test]
+fn plugin_diagnostics_round_trips_report_payload() {
+    let requested = IpcEnvelope::request(
+        "plugins-1",
+        IpcPayload::PluginDiagnosticsRequested(PluginDiagnosticsRequested {}),
+    );
+    let requested_json = serde_json::to_string(&requested).expect("serialize request");
+    assert!(requested_json.contains("\"type\":\"PluginDiagnosticsRequested\""));
+
+    let ready = IpcEnvelope::request(
+        "plugins-1",
+        IpcPayload::PluginDiagnosticsReady(PluginDiagnosticsReady {
+            report: serde_json::json!({
+                "entries": [{
+                    "id": "notes",
+                    "status": "Accepted"
+                }]
+            }),
+        }),
+    );
+    let ready_json = serde_json::to_string(&ready).expect("serialize diagnostics");
+    assert!(ready_json.contains("\"type\":\"PluginDiagnosticsReady\""));
+
+    let decoded: IpcEnvelope = serde_json::from_str(&ready_json).expect("deserialize diagnostics");
+    match decoded.payload {
+        IpcPayload::PluginDiagnosticsReady(ready) => {
+            assert_eq!(ready.report["entries"][0]["id"], "notes");
+        }
+        other => panic!("expected PluginDiagnosticsReady, got {other:?}"),
     }
 }

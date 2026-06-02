@@ -41,6 +41,8 @@ pub enum IpcPayload {
     PreviewRequested(PreviewRequested),
     PreviewChunk(PreviewChunk),
     PreviewReady(PreviewReady),
+    PluginDiagnosticsRequested(PluginDiagnosticsRequested),
+    PluginDiagnosticsReady(PluginDiagnosticsReady),
     Error(BackendError),
 }
 
@@ -130,6 +132,16 @@ pub struct PreviewChunk {
     pub title: String,
     pub body: String,
     pub is_final: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDiagnosticsRequested {}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDiagnosticsReady {
+    pub report: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

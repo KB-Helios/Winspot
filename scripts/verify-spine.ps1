@@ -3,6 +3,9 @@ $ErrorActionPreference = 'Stop'
 Write-Host '== Rust tests =='
 rtk cargo test
 
+Write-Host '== Plugin validation =='
+rtk cargo run -p winspot-pluginctl -- validate --plugins-dir crates/winspot-plugins/tests/fixtures/valid --format json
+
 Write-Host '== Avalonia build =='
 rtk dotnet build apps/Winspot.App/Winspot.App.csproj -c Debug -p:Platform=x64
 

@@ -1,0 +1,6 @@
+{
+  "id": "notes",
+  "name": "Notes",
+  "capabilities": ["ClipboardWrite"],
+  "enabled": true
+}

@@ -36,6 +36,9 @@ jobs:
       - name: Run Rust tests
         run: cargo test --workspace --no-fail-fast
 
+      - name: Validate plugin manifests
+        run: cargo run -p winspot-pluginctl -- validate --plugins-dir crates\winspot-plugins\tests\fixtures\valid --format json
+
       - name: Run app tests
         run: dotnet test apps\Winspot.App.Tests\Winspot.App.Tests.csproj -c Debug -p:Platform=x64
 
