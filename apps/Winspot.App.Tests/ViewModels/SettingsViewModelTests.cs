@@ -1,11 +1,13 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using Winspot_App.Models;
 using Winspot_App.Services;
+using Winspot_App.Strings;
 using Winspot_App.ViewModels;
 
 namespace Winspot_App.Tests.ViewModels;
@@ -115,6 +117,23 @@ public sealed class SettingsViewModelTests
         };
 
         Assert.IsFalse(viewModel.TrySave());
+    }
+
+    [TestMethod]
+    public void TrySave_WithReservedWindowsHotkey_FailsAndDoesNotPersist()
+    {
+        var store = new LauncherSettingsStore(_settingsPath);
+        var viewModel = new SettingsViewModel(store)
+        {
+            UseControl = true,
+            UseAlt = false,
+            UseWin = true,
+            Key = "Space",
+        };
+
+        Assert.IsFalse(viewModel.TrySave());
+        Assert.AreEqual(SettingsStatusMessages.ReservedWindowsHotkey, viewModel.StatusMessage);
+        CollectionAssert.AreEqual(new List<string> { "Control", "Alt" }, store.Load().Hotkey.Modifiers);
     }
 
     [TestMethod]

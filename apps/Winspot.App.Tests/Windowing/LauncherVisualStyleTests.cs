@@ -44,6 +44,15 @@ public sealed class LauncherVisualStyleTests
         Assert.IsFalse(axaml.Contains("<Setter Property=\"BorderBrush\" Value=\"#1FFFFFFF\" />"), "Compact search should not have a second border inside the spotlight surface.");
     }
 
+    [TestMethod]
+    public void Tokens_WhenFocusedTextBoxSelected_RemovesWhiteGlow()
+    {
+        var tokens = File.ReadAllText(FindTokensAxaml());
+
+        StringAssert.Contains(tokens, "<SolidColorBrush x:Key=\"TextControlBorderBrushFocused\" Color=\"Transparent\" />");
+        Assert.IsFalse(tokens.Contains("TextControlBorderBrushFocused\" Color=\"#40FFFFFF\""), "Focused search text box should not draw a white glow.");
+    }
+
     private static string FindMainWindowAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "MainWindow.axaml"));
 

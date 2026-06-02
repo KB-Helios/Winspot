@@ -22,4 +22,10 @@ public sealed class MainWindowKeyboardTests
         Assert.IsTrue(MainWindow.ShouldHandleActionNavigationKey(Key.Left, 0));
         Assert.IsTrue(MainWindow.ShouldHandleActionNavigationKey(Key.Right, 0));
     }
+
+    [TestMethod]
+    public void ShouldHideForHotkey_WhenVisibleButNotActive_StillClosesLauncher()
+    {
+        Assert.IsTrue(MainWindow.ShouldHideForHotkey(isVisible: true, isActive: false));
+    }
 }

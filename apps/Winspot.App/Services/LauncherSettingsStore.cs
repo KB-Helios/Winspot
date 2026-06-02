@@ -38,9 +38,25 @@ public sealed class LauncherSettingsStore
             }
 
             var json = File.ReadAllText(_settingsPath);
-            return JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings();
+            var settings = JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings();
+            if (!NeedsHotkeyRepair(settings.Hotkey))
+            {
+                return settings;
+            }
+
+            var repaired = RepairHotkey(settings);
+            TrySaveRepair(repaired);
+            return repaired;
         }
-        catch
+        catch (JsonException)
+        {
+            return new LauncherSettings();
+        }
+        catch (IOException)
+        {
+            return new LauncherSettings();
+        }
+        catch (UnauthorizedAccessException)
         {
             return new LauncherSettings();
         }
@@ -86,5 +102,35 @@ public sealed class LauncherSettingsStore
     {
         var localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
         return ResolveSettingsPath(AppContext.BaseDirectory, localAppData);
+    }
+
+    private static bool NeedsHotkeyRepair(HotkeyBinding? hotkey) =>
+        hotkey is null
+        || string.IsNullOrWhiteSpace(hotkey.Key)
+        || hotkey.Modifiers is null
+        || hotkey.Modifiers.Count == 0
+        || hotkey.Modifiers.Any(string.IsNullOrWhiteSpace)
+        || hotkey.IsReservedByWindows();
+
+    private static LauncherSettings RepairHotkey(LauncherSettings settings) => new()
+    {
+        Hotkey = new HotkeyBinding(),
+        LaunchOnStartup = settings.LaunchOnStartup,
+        ShowTrayIcon = settings.ShowTrayIcon,
+        ReduceMotion = settings.ReduceMotion,
+    };
+
+    private void TrySaveRepair(LauncherSettings repaired)
+    {
+        try
+        {
+            Save(repaired);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 }

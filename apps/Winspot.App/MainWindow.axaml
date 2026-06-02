@@ -11,7 +11,7 @@
     MinWidth="420"
     MinHeight="76"
     Background="Transparent"
-    TransparencyLevelHint="Mica, AcrylicBlur, Blur"
+    TransparencyLevelHint="Transparent"
     CanResize="False"
     ExtendClientAreaToDecorationsHint="True"
     ShowInTaskbar="False"

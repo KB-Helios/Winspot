@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 
 using Winspot_App.Models;
 using Winspot_App.Services;
+using Winspot_App.Strings;
 
 namespace Winspot_App.ViewModels;
 
@@ -131,6 +132,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
 
         var settings = BuildSettings();
+        if (settings.Hotkey.IsReservedByWindows())
+        {
+            StatusMessage = SettingsStatusMessages.ReservedWindowsHotkey;
+            return false;
+        }
+
         _store.Save(settings);
         StartupRegistration.Apply(settings.LaunchOnStartup);
 
