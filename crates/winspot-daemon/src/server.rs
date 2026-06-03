@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::Context;
+#[cfg(windows)]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
@@ -238,7 +239,11 @@ fn current_plugin_validation_report(
     config: &PipeConfig,
 ) -> PluginValidationReport {
     let Some(dir) = config.plugins_dir.as_deref() else {
-        return runtime.plugin_validation_report.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
+        return runtime
+            .plugin_validation_report
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
     };
 
     let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
@@ -246,8 +251,14 @@ fn current_plugin_validation_report(
         Ok(user_report) => {
             report.extend(user_report);
             // Update the live registry and report in the runtime
-            *runtime.plugin_registry.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = registry;
-            *runtime.plugin_validation_report.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = report.clone();
+            *runtime
+                .plugin_registry
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = registry;
+            *runtime
+                .plugin_validation_report
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = report.clone();
             report
         }
         Err(error) => {
@@ -255,7 +266,11 @@ fn current_plugin_validation_report(
                 "winspot-daemon: failed to rescan plugins directory {}: {error:?}",
                 dir.display()
             );
-            runtime.plugin_validation_report.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+            runtime
+                .plugin_validation_report
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone()
         }
     }
 }
@@ -288,6 +303,7 @@ fn current_plugin_validation_report(
 /// assert!(res.is_ok() || res.is_err()); // illustrate call; real invocation runs the daemon once
 /// # }
 /// ```
+#[cfg(windows)]
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
     let (plugin_registry, plugin_validation_report) =
         build_plugin_registry(config.plugins_dir.as_deref());
@@ -300,6 +316,7 @@ pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyho
     serve_runtime_pipe_once(config, &runtime).await
 }
 
+#[cfg(windows)]
 pub async fn serve_runtime_pipe_once(
     config: PipeConfig,
     runtime: &DaemonRuntime,

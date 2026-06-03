@@ -1152,9 +1152,7 @@ fn read_to_vec_with_cap(
     loop {
         let remaining = max_bytes.saturating_sub(bytes.len());
         let read_len = chunk.len().min(remaining.saturating_add(1));
-        if read_len == 0 {
-            return Ok(None);
-        }
+        debug_assert!(read_len > 0, "read_len is always > 0 due to saturating_add(1)");
 
         let read = reader
             .read(&mut chunk[..read_len])
