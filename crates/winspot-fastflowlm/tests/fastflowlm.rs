@@ -4,12 +4,13 @@ use winspot_core::{ActionKind, SearchResultKind};
 use winspot_fastflowlm::{
     ContextLimits, FASTFLOWLM_RESULT_ID, FastFlowLmProvider, build_index_context,
     parse_fastflowlm_prompt, should_stop_owned_process, validate_installed_model_from_list_json,
+    validate_models_response_json,
 };
 use winspot_index::{IndexStore, IndexedItem};
 use winspot_search::providers::DynamicSearchProvider;
 
 #[test]
-fn parses_only_explicit_ai_prefixes() {
+fn parse_ai_query_with_explicit_prefixes_returns_prompt() {
     assert_eq!(
         parse_fastflowlm_prompt("ai summarize the roadmap"),
         Some("summarize the roadmap")
@@ -25,8 +26,8 @@ fn parses_only_explicit_ai_prefixes() {
 }
 
 #[test]
-fn provider_returns_lightweight_plugin_result_without_executing_flm() {
-    let results = FastFlowLmProvider::default().search("ai summarize roadmap");
+fn fastflowlm_provider_with_ai_prefix_returns_lightweight_plugin_result() {
+    let results = FastFlowLmProvider.search("ai summarize roadmap");
 
     assert_eq!(results.len(), 1);
     let result = &results[0];
@@ -52,18 +53,14 @@ fn provider_returns_lightweight_plugin_result_without_executing_flm() {
 /// assert!(results.is_empty());
 /// ```
 #[test]
-fn provider_ignores_queries_without_ai_prefix() {
-    assert!(
-        FastFlowLmProvider::default()
-            .search("summarize roadmap")
-            .is_empty()
-    );
-    assert!(FastFlowLmProvider::default().search("ai").is_empty());
-    assert!(FastFlowLmProvider::default().search("ask").is_empty());
+fn fastflowlm_provider_without_ai_prefix_returns_no_results() {
+    assert!(FastFlowLmProvider.search("summarize roadmap").is_empty());
+    assert!(FastFlowLmProvider.search("ai").is_empty());
+    assert!(FastFlowLmProvider.search("ask").is_empty());
 }
 
 #[test]
-fn validates_installed_model_from_flm_list_json() {
+fn validate_installed_model_from_list_json_with_installed_model_succeeds() {
     let json = r#"
         [
           {"name":"llama3.2:1b","installed":true},
@@ -78,24 +75,22 @@ fn validates_installed_model_from_flm_list_json() {
     assert!(error.to_string().contains("missing:model"));
 }
 
-/// Verifies that `build_index_context` returns index-matched files, includes file content when within per-file caps, and records a `metadata_only_reason` for oversized or non-UTF-8 files.
-///
-/// This test writes three files (small UTF-8, oversized UTF-8, and binary), indexes them, and asserts:
-/// - the small file appears with its full content and no `metadata_only_reason`,
-/// - the oversized file appears with `content == None` and `metadata_only_reason == "file exceeds per-file content cap"`,
-/// - the binary file appears with `content == None` and `metadata_only_reason == "binary or non-UTF-8 file"`.
-///
-/// # Examples
-///
-/// ```rust
-/// // Build a context limited to small per-file bytes so large files are metadata-only.
-/// let context = build_index_context(&store, "query", ContextLimits {
-///     max_files: 5,
-///     max_file_bytes: 12,
-///     max_context_bytes: 24,
-/// }).unwrap();
-/// ```
-fn context_uses_index_matches_and_caps_file_content() {
+#[test]
+fn validate_models_response_json_with_unrelated_service_rejects_response() {
+    let health = r#"{"data":[{"id":"gemma4-it:e2b"}]}"#;
+    assert!(validate_models_response_json(health, "gemma4-it:e2b").is_ok());
+
+    let wrong_model = validate_models_response_json(health, "missing:model")
+        .expect_err("missing health model should fail");
+    assert!(wrong_model.to_string().contains("missing:model"));
+
+    let unrelated = validate_models_response_json(r#"{"ok":true}"#, "gemma4-it:e2b")
+        .expect_err("unrelated service response should fail");
+    assert!(unrelated.to_string().contains("/v1/models"));
+}
+
+#[test]
+fn build_context_with_index_matches_caps_file_content() {
     let root = unique_temp_dir("context");
     let small = root.join("Roadmap.md");
     let oversized = root.join("Roadmap-Long.md");
@@ -160,7 +155,7 @@ fn context_uses_index_matches_and_caps_file_content() {
 }
 
 #[test]
-fn idle_shutdown_applies_only_to_owned_processes() {
+fn should_stop_owned_process_with_idle_process_applies_ownership_policy() {
     assert!(should_stop_owned_process(true, 1_000, 1_121, 120));
     assert!(!should_stop_owned_process(true, 1_000, 1_119, 120));
     assert!(!should_stop_owned_process(false, 1_000, 1_500, 120));
@@ -191,33 +186,6 @@ fn indexed_file(id: &str, title: &str, path: &std::path::Path) -> IndexedItem {
     }
 }
 
-/// Creates and returns a unique temporary directory path under the system temp directory.
-
-///
-
-/// The directory is located at `{temp_dir}/winspot-fastflowlm-{label}-{process_id}`.
-
-/// If a directory already exists at that path it is removed before creating a new empty directory.
-
-/// Panics if the directory cannot be created.
-
-///
-
-/// # Examples
-
-///
-
-/// ```
-
-/// let dir = unique_temp_dir("test");
-
-/// assert!(dir.exists());
-
-/// // Clean up if desired:
-
-/// std::fs::remove_dir_all(&dir).unwrap();
-
-/// ```
 fn unique_temp_dir(label: &str) -> std::path::PathBuf {
     let root =
         std::env::temp_dir().join(format!("winspot-fastflowlm-{label}-{}", std::process::id()));

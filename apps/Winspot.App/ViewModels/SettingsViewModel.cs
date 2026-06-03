@@ -37,6 +37,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private string _fastFlowLmMaxContextBytes = (4 * 1024 * 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private int _selectedSectionIndex;
     private string _statusMessage = string.Empty;
+    private bool _isPluginValidationRunning;
+    private PluginValidationReport _pluginValidationReport = PluginValidationReport.Empty;
+    private IReadOnlyList<PluginValidationEntryViewItem> _pluginValidationEntries = Array.Empty<PluginValidationEntryViewItem>();
+    private string _pluginValidationSummary = SettingsDisplayStrings.PluginValidationNotChecked;
+    private string _pluginValidationIssueSummary = string.Empty;
+    private string _pluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthUnchecked;
+    private string _pluginValidationLastCheckedText = string.Empty;
+    private bool _showOnlyPluginValidationIssues = true;
 
     public SettingsViewModel()
         : this(new LauncherSettingsStore())
@@ -104,7 +112,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         MotionProfile.ToString(),
         ShowTrayIcon,
         HotkeyPreview,
-        AppVersion);
+        AppVersion,
+        PluginValidationSummary);
 
     public bool UseControl
     {
@@ -246,10 +255,64 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         private set => SetField(ref _statusMessage, value);
     }
 
+    public bool IsPluginValidationRunning
+    {
+        get => _isPluginValidationRunning;
+        private set => SetField(ref _isPluginValidationRunning, value);
+    }
+
+    public string PluginValidationSummary
+    {
+        get => _pluginValidationSummary;
+        private set
+        {
+            if (SetField(ref _pluginValidationSummary, value))
+            {
+                OnPropertyChanged(nameof(DiagnosticsText));
+            }
+        }
+    }
+
+    public string PluginValidationIssueSummary
+    {
+        get => _pluginValidationIssueSummary;
+        private set => SetField(ref _pluginValidationIssueSummary, value);
+    }
+
+    public string PluginValidationHealth
+    {
+        get => _pluginValidationHealth;
+        private set => SetField(ref _pluginValidationHealth, value);
+    }
+
+    public string PluginValidationLastCheckedText
+    {
+        get => _pluginValidationLastCheckedText;
+        private set => SetField(ref _pluginValidationLastCheckedText, value);
+    }
+
+    public bool ShowOnlyPluginValidationIssues
+    {
+        get => _showOnlyPluginValidationIssues;
+        set
+        {
+            if (SetField(ref _showOnlyPluginValidationIssues, value))
+            {
+                RefreshPluginValidationEntries();
+            }
+        }
+    }
+
+    public IReadOnlyList<PluginValidationEntryViewItem> PluginValidationEntries
+    {
+        get => _pluginValidationEntries;
+        private set => SetField(ref _pluginValidationEntries, value);
+    }
+
     /// The activation chord as it would be shown to the user (e.g. "Ctrl Alt Space").
     public string HotkeyPreview => BuildBinding().ToDisplayString();
 
-    public bool IsValid => BuildModifiers().Count > 0 && IsKeyValid(_key) && FastFlowLmNumbersAreValid();
+    public bool IsValid => BuildModifiers().Count > 0 && IsKeyValid(_key) && FastFlowLmNumbersCanBeSaved();
 
     /// <summary>
     /// Builds a LauncherSettings snapshot from the view-model's current state.
@@ -273,7 +336,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// Validation performed:
     /// - Requires at least one hotkey modifier (Ctrl, Alt, Shift, or Win).
     /// - Requires a valid hotkey key (single letter/digit or a named key such as Space or Enter).
-    /// - Requires FastFlowLM numeric fields to be positive whole numbers.
+    /// - Requires FastFlowLM numeric fields to be positive whole numbers when FastFlowLM is enabled.
     /// - Rejects hotkeys reserved by Windows.
     /// On validation failure the method sets <see cref="StatusMessage"/> to an explanatory message and does not persist changes.
     /// On success the method saves settings to the store, applies startup registration according to the saved setting, sets <see cref="StatusMessage"/> to "Saved.", and invokes the <see cref="Saved"/> event with the persisted settings.
@@ -293,7 +356,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             return false;
         }
 
-        if (!FastFlowLmNumbersAreValid())
+        if (_fastFlowLmEnabled && !FastFlowLmNumbersAreValid())
         {
             StatusMessage = "FastFlowLM numeric settings must be positive whole numbers.";
             return false;
@@ -347,10 +410,58 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>
-    /// Populates the view-model's backing fields from a persisted <see cref="LauncherSettings"/> snapshot.
-    /// </summary>
-    /// <param name="settings">The persisted settings to load from. Hotkey modifiers are mapped into the view-model's modifier booleans (treating "control"/"ctrl" and "win"/"windows" equivalently), the hotkey key is copied, startup/tray/theme/motion values are applied (when <see cref="LauncherSettings.ReduceMotion"/> is true the motion profile is set to <see cref="MotionProfile.Reduced"/>), and FastFlowLM numeric values are converted to invariant-culture strings for the corresponding view-model fields.</param>
+    public async Task RefreshPluginValidationAsync(CancellationToken cancellationToken)
+    {
+        if (IsPluginValidationRunning)
+        {
+            return;
+        }
+
+        var previousReport = _pluginValidationReport;
+        var previousEntries = PluginValidationEntries;
+        var previousHealth = PluginValidationHealth;
+        var previousSummary = PluginValidationSummary;
+        var previousIssueSummary = PluginValidationIssueSummary;
+        var previousLastCheckedText = PluginValidationLastCheckedText;
+
+        IsPluginValidationRunning = true;
+        PluginValidationSummary = SettingsDisplayStrings.PluginValidationChecking;
+        PluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthChecking;
+
+        try
+        {
+            _pluginValidationReport = await _ipcClient.GetPluginDiagnosticsAsync(cancellationToken).ConfigureAwait(true);
+            PluginValidationHealth = SettingsDisplayStrings.FormatPluginValidationHealth(_pluginValidationReport.Health);
+            PluginValidationSummary = SettingsDisplayStrings.FormatPluginValidationSummary(_pluginValidationReport);
+            PluginValidationIssueSummary = SettingsDisplayStrings.FormatPluginValidationIssueSummary(_pluginValidationReport);
+            PluginValidationLastCheckedText = SettingsDisplayStrings.FormatPluginValidationLastChecked(DateTimeOffset.Now);
+            RefreshPluginValidationEntries();
+        }
+        catch (OperationCanceledException)
+        {
+            _pluginValidationReport = previousReport;
+            PluginValidationEntries = previousEntries;
+            PluginValidationHealth = previousHealth;
+            PluginValidationSummary = previousSummary;
+            PluginValidationIssueSummary = previousIssueSummary;
+            PluginValidationLastCheckedText = previousLastCheckedText;
+        }
+        catch
+        {
+            _pluginValidationReport = PluginValidationReport.Empty;
+            PluginValidationEntries = Array.Empty<PluginValidationEntryViewItem>();
+            PluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthUnavailable;
+            PluginValidationSummary = SettingsDisplayStrings.PluginValidationUnavailable;
+            PluginValidationIssueSummary = string.Empty;
+            PluginValidationLastCheckedText = string.Empty;
+            OnPropertyChanged(nameof(DiagnosticsText));
+        }
+        finally
+        {
+            IsPluginValidationRunning = false;
+        }
+    }
+
     private void LoadFrom(LauncherSettings settings)
     {
         var modifiers = settings.Hotkey.Modifiers
@@ -412,11 +523,24 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return modifiers;
     }
 
-    /// <summary>
-    /// Determines whether a user-entered key string represents a valid hotkey key name.
-    /// </summary>
-    /// <param name="key">The key text to validate (may be a single character or a named key).</param>
-    /// <returns>`true` if the input is a single ASCII letter A–Z or digit 0–9, or matches a recognized named key; `false` otherwise.</returns>
+    private void RefreshPluginValidationEntries()
+    {
+        var entries = ShowOnlyPluginValidationIssues
+            ? _pluginValidationReport.SafeEntries.Where(entry => entry.HasIssues).ToArray()
+            : _pluginValidationReport.SafeEntries.ToArray();
+
+        PluginValidationEntries = entries.Select(CreatePluginValidationEntryViewItem).ToArray();
+    }
+
+    private static PluginValidationEntryViewItem CreatePluginValidationEntryViewItem(PluginValidationEntry entry) => new(
+        SettingsDisplayStrings.FormatPluginValidationEntryName(entry),
+        entry.Status,
+        SettingsDisplayStrings.FormatPluginValidationTrust(entry.Trusted),
+        entry.ManifestPath,
+        entry.SafeIssues
+            .Select(issue => new PluginValidationIssueViewItem(SettingsDisplayStrings.FormatPluginValidationIssue(issue)))
+        .ToArray());
+
     private static bool IsKeyValid(string? key)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -452,7 +576,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             ExecutablePath = string.IsNullOrWhiteSpace(_fastFlowLmExecutablePath)
                 ? defaults.ExecutablePath
                 : _fastFlowLmExecutablePath.Trim(),
-            Port = ParsePositiveInt(_fastFlowLmPort, defaults.Port),
+            Port = ParsePositiveInt(_fastFlowLmPort, defaults.Port, maxValue: 65535),
             IdleTimeoutSeconds = ParsePositiveInt(_fastFlowLmIdleTimeoutSeconds, defaults.IdleTimeoutSeconds),
             MaxContextFiles = ParsePositiveInt(_fastFlowLmMaxContextFiles, defaults.MaxContextFiles),
             MaxFileBytes = ParsePositiveInt(_fastFlowLmMaxFileBytes, defaults.MaxFileBytes),
@@ -460,24 +584,17 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         };
     }
 
-    /// <summary>
-        /// Validates that all FastFlowLM numeric input fields contain positive integers and that the port is within the valid TCP range.
-        /// </summary>
-        /// <returns>`true` if the port, idle timeout, max context files, max file bytes, and max context bytes parse to integers greater than zero and the port is no greater than 65535; `false` otherwise.</returns>
-        private bool FastFlowLmNumbersAreValid() =>
+    private bool FastFlowLmNumbersCanBeSaved() =>
+        !_fastFlowLmEnabled || FastFlowLmNumbersAreValid();
+
+    private bool FastFlowLmNumbersAreValid() =>
         IsPositiveInt(_fastFlowLmPort, maxValue: 65535)
         && IsPositiveInt(_fastFlowLmIdleTimeoutSeconds)
         && IsPositiveInt(_fastFlowLmMaxContextFiles)
         && IsPositiveInt(_fastFlowLmMaxFileBytes)
         && IsPositiveInt(_fastFlowLmMaxContextBytes);
 
-    /// <summary>
-        /// Determines whether the provided string represents an integer greater than zero and not exceeding a specified maximum.
-        /// </summary>
-        /// <param name="value">The string to validate; may be null.</param>
-        /// <param name="maxValue">The inclusive upper bound for the parsed integer.</param>
-        /// <returns>`true` if the string parses to an integer > 0 and <= <paramref name="maxValue"/>, `false` otherwise.</returns>
-        private static bool IsPositiveInt(string? value, int maxValue = int.MaxValue) =>
+    private static bool IsPositiveInt(string? value, int maxValue = int.MaxValue) =>
         int.TryParse(
             value,
             System.Globalization.NumberStyles.None,
@@ -486,14 +603,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         && parsed > 0
         && parsed <= maxValue;
 
-    /// <summary>
-            /// Parses a string as a positive integer within an inclusive upper bound, returning a fallback when the value is invalid or out of range.
-            /// </summary>
-            /// <param name="value">The input string to parse; may be null or empty.</param>
-            /// <param name="fallback">The value to return if parsing fails or the parsed number is not within the allowed range.</param>
-            /// <param name="maxValue">The inclusive maximum allowed value for the parsed integer.</param>
-            /// <returns>The parsed integer when it is greater than zero and less than or equal to <paramref name="maxValue"/>, otherwise <paramref name="fallback"/>.</returns>
-            private static int ParsePositiveInt(string? value, int fallback, int maxValue = int.MaxValue) =>
+    private static int ParsePositiveInt(string? value, int fallback, int maxValue = int.MaxValue) =>
         int.TryParse(
             value,
             System.Globalization.NumberStyles.None,
@@ -536,3 +646,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
+
+public sealed record PluginValidationEntryViewItem(
+    string DisplayName,
+    string Status,
+    string TrustSummary,
+    string? ManifestPath,
+    IReadOnlyList<PluginValidationIssueViewItem> Issues);
+
+public sealed record PluginValidationIssueViewItem(string DisplayText);

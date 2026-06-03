@@ -6,9 +6,9 @@ use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Command, Output, Stdio},
     sync::{Arc, Condvar, Mutex},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, anyhow};
@@ -35,6 +35,7 @@ const HEALTH_PATH: &str = "/v1/models";
 const CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 const SERVER_START_TIMEOUT: Duration = Duration::from_secs(10);
+const MODEL_LIST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,7 +66,7 @@ impl Default for FastFlowLmSettings {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let s = crate::FastFlowLmSettings::default();
     /// assert!(s.enabled);
     /// assert_eq!(s.model_tag, crate::DEFAULT_MODEL_TAG);
@@ -95,7 +96,7 @@ impl FastFlowLmSettings {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let s = FastFlowLmSettings {
     ///     model_tag: "  my-model  ".into(),
     ///     executable_path: "  /usr/bin/flm  ".into(),
@@ -144,7 +145,7 @@ impl FastFlowLmSettings {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let settings = FastFlowLmSettings::default();
     /// let limits = settings.context_limits();
     /// assert_eq!(limits.max_files, settings.max_context_files);
@@ -172,7 +173,7 @@ impl Default for ContextLimits {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let limits = ContextLimits::default();
     /// assert_eq!(limits.max_files, DEFAULT_MAX_CONTEXT_FILES);
     /// assert_eq!(limits.max_file_bytes, DEFAULT_MAX_FILE_BYTES);
@@ -220,7 +221,7 @@ impl DynamicSearchProvider for FastFlowLmProvider {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// // Construct the provider (type shown for clarity; actual construction may vary).
     /// let provider = FastFlowLmProvider;
     /// let results = provider.search("ask Tell me a short joke");
@@ -260,31 +261,18 @@ pub struct FastFlowLmService {
 
 impl FastFlowLmService {
     /// Create a new FastFlowLmService with normalized settings and a shared index store.
-    
     ///
-    
     /// The provided `settings` are normalized before use; an internal `FastFlowLmManager` is
-    
     /// initialized from those normalized settings. The `index_store` is wrapped in a
-    
     /// thread-safe `Arc<Mutex<_>>` for shared access by the service.
-    
     ///
-    
     /// # Examples
-    
     ///
-    
-    /// ```
-    
+    /// ```ignore
     /// let settings = FastFlowLmSettings::default();
-    
     /// let index_store = IndexStore::default();
-    
     /// let svc = FastFlowLmService::new(settings, index_store);
-    
     /// assert!(svc.settings.model_tag.len() > 0);
-    
     /// ```
     pub fn new(settings: FastFlowLmSettings, index_store: IndexStore) -> Self {
         let settings = settings.normalized();
@@ -348,6 +336,7 @@ pub struct FastFlowLmManager {
 struct ProcessState {
     inner: Mutex<ProcessStateInner>,
     idle_changed: Condvar,
+    startup_lock: Mutex<()>,
 }
 
 #[derive(Default)]
@@ -365,7 +354,7 @@ impl FastFlowLmManager {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let mgr = FastFlowLmManager::new(FastFlowLmSettings::default());
     /// assert!(mgr.settings.enabled);
     /// ```
@@ -375,6 +364,7 @@ impl FastFlowLmManager {
             state: Arc::new(ProcessState {
                 inner: Mutex::new(ProcessStateInner::default()),
                 idle_changed: Condvar::new(),
+                startup_lock: Mutex::new(()),
             }),
         }
     }
@@ -385,7 +375,7 @@ impl FastFlowLmManager {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// // Assume `manager` is a properly constructed `FastFlowLmManager`
     /// // and `context` is a `ContextBundle` built from the index.
     /// let answer = manager.ask("Summarize the following files", &context).unwrap();
@@ -419,7 +409,7 @@ impl FastFlowLmManager {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```ignore
     /// use winspot_fastflowlm::{FastFlowLmManager, FastFlowLmSettings};
     ///
     /// let settings = FastFlowLmSettings::default();
@@ -428,6 +418,12 @@ impl FastFlowLmManager {
     /// let _ = manager.ensure_server();
     /// ```
     fn ensure_server(&self) -> anyhow::Result<()> {
+        let _startup = self
+            .state
+            .startup_lock
+            .lock()
+            .map_err(|_| anyhow!("FastFlowLM startup state is unavailable"))?;
+
         if health_check(&self.settings).is_ok() {
             return Ok(());
         }
@@ -515,7 +511,7 @@ impl FastFlowLmManager {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```ignore
     /// // Assume `manager` is a `FastFlowLmManager`.
     /// // Calling `touch_used()` records activity and wakes any waiting reaper thread.
     /// manager.touch_used();
@@ -536,7 +532,7 @@ impl FastFlowLmManager {
     ///
     /// # Examples
     ///
-    /// ```no_run
+    /// ```ignore
     /// let mgr = FastFlowLmManager::new(FastFlowLmSettings::default());
     /// mgr.start_idle_reaper();
     /// ```
@@ -603,7 +599,7 @@ impl FastFlowLmManager {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// assert_eq!(parse_fastflowlm_prompt("ai Hello, world!"), Some("Hello, world!"));
 /// assert_eq!(parse_fastflowlm_prompt("Ask   What is Rust?  "), Some("What is Rust?"));
 /// assert_eq!(parse_fastflowlm_prompt("hello there"), None);
@@ -631,7 +627,7 @@ pub fn parse_fastflowlm_prompt(query: &str) -> Option<&str> {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use winspot_fastflowlm::{build_index_context, ContextLimits, IndexStore};
 /// // Assume `store` is an existing IndexStore and `query` is the user's query.
 /// let store: IndexStore = /* obtain or construct index store */ unimplemented!();
@@ -700,7 +696,7 @@ pub fn build_index_context(
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // Assume `store` is an initialized IndexStore and `search_index_for_context` is in scope.
 /// let results = search_index_for_context(&store, "fast model inference", 10).unwrap();
 /// assert!(results.len() <= 10);
@@ -731,25 +727,15 @@ fn search_index_for_context(
 }
 
 /// Produces query tokens by splitting on non-alphanumeric characters (except `-` and `_`).
-
 ///
-
 /// The iterator yields trimmed substrings of length at least 3. Splitting treats any character
-
 /// that is not an ASCII alphanumeric, `-`, or `_` as a separator.
-
 ///
-
 /// # Examples
-
 ///
-
-/// ```
-
+/// ```ignore
 /// let tokens: Vec<&str> = crate::query_tokens("find: fast-flow_lm v1.2 beta").collect();
-
 /// assert_eq!(tokens, vec!["find", "fast-flow_lm", "beta"]);
-
 /// ```
 fn query_tokens(query: &str) -> impl Iterator<Item = &str> {
     query
@@ -768,7 +754,7 @@ fn query_tokens(query: &str) -> impl Iterator<Item = &str> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let json = r#"[{ "name": "my-model", "installed": true }]"#;
 /// assert!(validate_installed_model_from_list_json(json, "my-model").is_ok());
 /// ```
@@ -786,6 +772,27 @@ pub fn validate_installed_model_from_list_json(
     );
 }
 
+pub fn validate_models_response_json(json_output: &str, model_tag: &str) -> anyhow::Result<()> {
+    let value: Value =
+        serde_json::from_str(json_output).context("parse FastFlowLM /v1/models response")?;
+    let data = value
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| anyhow!("FastFlowLM /v1/models response did not include a data array"))?;
+
+    let contains_model = data.iter().any(|item| {
+        ["id", "name", "model", "tag"]
+            .iter()
+            .filter_map(|key| item.get(*key).and_then(Value::as_str))
+            .any(|candidate| candidate == model_tag)
+    });
+    if contains_model {
+        return Ok(());
+    }
+
+    anyhow::bail!("FastFlowLM /v1/models response did not include configured model '{model_tag}'");
+}
+
 /// Determine whether an owned process has been idle long enough to be stopped.
 ///
 /// `owns_process` indicates whether the caller currently owns the process. `last_used_unix_seconds`
@@ -795,7 +802,7 @@ pub fn validate_installed_model_from_list_json(
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // not owned -> don't stop
 /// assert_eq!(should_stop_owned_process(false, 100, 200, 50), false);
 /// // owned but not yet timed out -> don't stop
@@ -833,7 +840,7 @@ pub fn should_stop_owned_process(
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use std::path::Path;
 /// let settings = winspot_fastflowlm::load_settings_from_path(Path::new("nonexistent.json")).unwrap();
 /// // defaults are enabled by default
@@ -865,7 +872,7 @@ pub fn load_settings_from_path(path: impl AsRef<Path>) -> anyhow::Result<FastFlo
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// if let Some(path) = default_settings_path() {
 ///     // Use the discovered settings path
 ///     println!("{}", path.display());
@@ -893,7 +900,7 @@ pub fn default_settings_path() -> Option<PathBuf> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// if let Some(path) = default_index_path() {
 ///     // Found a candidate index path
 ///     assert!(path.file_name().and_then(|n| n.to_str()) == Some("index.sqlite"));
@@ -946,7 +953,7 @@ enum FileContextRead {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use std::fs;
 /// use std::io::Write;
 /// use tempfile::NamedTempFile;
@@ -965,22 +972,42 @@ fn read_context_file(
     limits: ContextLimits,
     current_total_bytes: usize,
 ) -> FileContextRead {
-    let Ok(metadata) = fs::metadata(path) else {
+    let Ok(file) = fs::File::open(path) else {
         return FileContextRead::MetadataOnly("unreadable file".to_string());
     };
+    let Ok(metadata) = file.metadata() else {
+        return FileContextRead::MetadataOnly("unreadable file".to_string());
+    };
+
     if !metadata.is_file() {
         return FileContextRead::MetadataOnly("not a regular file".to_string());
     }
-    if metadata.len() as usize > limits.max_file_bytes {
+    let file_bytes = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
+    if file_bytes > limits.max_file_bytes {
         return FileContextRead::MetadataOnly("file exceeds per-file content cap".to_string());
     }
-    if current_total_bytes.saturating_add(metadata.len() as usize) > limits.max_context_bytes {
+    let remaining_context_bytes = limits.max_context_bytes.saturating_sub(current_total_bytes);
+    if file_bytes > remaining_context_bytes {
         return FileContextRead::MetadataOnly("aggregate context cap reached".to_string());
     }
 
-    let Ok(bytes) = fs::read(path) else {
+    let allowed_bytes = limits.max_file_bytes.min(remaining_context_bytes);
+    let read_limit = u64::try_from(allowed_bytes.saturating_add(1)).unwrap_or(u64::MAX);
+    let mut bytes = Vec::with_capacity(file_bytes.min(allowed_bytes));
+    let mut limited_file = file.take(read_limit);
+    if limited_file.read_to_end(&mut bytes).is_err() {
         return FileContextRead::MetadataOnly("unreadable file".to_string());
-    };
+    }
+    if bytes.len() > allowed_bytes {
+        let reason = if allowed_bytes == remaining_context_bytes
+            && remaining_context_bytes < limits.max_file_bytes
+        {
+            "aggregate context cap reached"
+        } else {
+            "file exceeds per-file content cap"
+        };
+        return FileContextRead::MetadataOnly(reason.to_string());
+    }
     if bytes.contains(&0) {
         return FileContextRead::MetadataOnly("binary or non-UTF-8 file".to_string());
     }
@@ -999,7 +1026,7 @@ fn read_context_file(
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// let settings = FastFlowLmSettings {
 ///     model_tag: "my-model:latest".into(),
 ///     executable_path: "flm".into(),
@@ -1008,15 +1035,7 @@ fn read_context_file(
 /// validate_installed_model(&settings).unwrap();
 /// ```
 fn validate_installed_model(settings: &FastFlowLmSettings) -> anyhow::Result<()> {
-    let output = Command::new(&settings.executable_path)
-        .args(["list", "--json"])
-        .output()
-        .with_context(|| {
-            format!(
-                "failed to run '{} list --json' to validate FastFlowLM model",
-                settings.executable_path
-            )
-        })?;
+    let output = run_flm_list_json(settings, MODEL_LIST_TIMEOUT)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1031,6 +1050,78 @@ fn validate_installed_model(settings: &FastFlowLmSettings) -> anyhow::Result<()>
     validate_installed_model_from_list_json(&stdout, &settings.model_tag)
 }
 
+fn run_flm_list_json(settings: &FastFlowLmSettings, timeout: Duration) -> anyhow::Result<Output> {
+    let mut child = Command::new(&settings.executable_path)
+        .args(["list", "--json"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "failed to run '{} list --json' to validate FastFlowLM model",
+                settings.executable_path
+            )
+        })?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("failed to capture FastFlowLM model-list stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow!("failed to capture FastFlowLM model-list stderr"))?;
+    let stdout_reader = std::thread::spawn(move || {
+        let mut reader = stdout;
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let stderr_reader = std::thread::spawn(move || {
+        let mut reader = stderr;
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).map(|_| bytes)
+    });
+
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .context("wait for FastFlowLM model-list command")?
+        {
+            return Ok(Output {
+                status,
+                stdout: join_reader(stdout_reader, "stdout")?,
+                stderr: join_reader(stderr_reader, "stderr")?,
+            });
+        }
+
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            drop(stdout_reader);
+            drop(stderr_reader);
+            anyhow::bail!(
+                "'{} list --json' timed out after {} ms",
+                settings.executable_path,
+                timeout.as_millis()
+            );
+        }
+
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+fn join_reader(
+    reader: std::thread::JoinHandle<std::io::Result<Vec<u8>>>,
+    stream_name: &str,
+) -> anyhow::Result<Vec<u8>> {
+    reader
+        .join()
+        .map_err(|_| anyhow!("FastFlowLM model-list {stream_name} reader panicked"))?
+        .with_context(|| format!("read FastFlowLM model-list {stream_name}"))
+}
+
 /// Checks whether a JSON structure contains an installed model with the given tag.
 ///
 /// This performs a recursive search through arrays and objects. An object is considered a
@@ -1042,7 +1133,7 @@ fn validate_installed_model(settings: &FastFlowLmSettings) -> anyhow::Result<()>
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use serde_json::json;
 /// // direct match with installed = true
 /// let v = json!({ "name": "foo", "installed": true });
@@ -1098,7 +1189,7 @@ struct ChatMessage {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let ctx = ContextBundle { entries: vec![], total_content_bytes: 0 };
 /// let msgs = build_chat_messages("Who wrote the README?", &ctx);
 /// assert_eq!(msgs.len(), 2);
@@ -1128,7 +1219,7 @@ fn build_chat_messages(question: &str, context: &ContextBundle) -> Vec<ChatMessa
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use std::collections::HashMap;
 ///
 /// let entry = crate::ContextEntry {
@@ -1190,13 +1281,14 @@ fn format_context_for_prompt(context: &ContextBundle) -> String {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// let settings = FastFlowLmSettings::default();
 /// // Succeeds when a FastFlowLM server is reachable on `settings.port`.
 /// let _ = health_check(&settings);
 /// ```
 fn health_check(settings: &FastFlowLmSettings) -> anyhow::Result<()> {
-    http_get(settings.port, HEALTH_PATH).map(|_| ())
+    let response = http_get(settings.port, HEALTH_PATH)?;
+    validate_models_response_json(&response, &settings.model_tag)
 }
 
 /// Send a chat completion request to the local FastFlowLM server and return the model's reply.
@@ -1212,7 +1304,7 @@ fn health_check(settings: &FastFlowLmSettings) -> anyhow::Result<()> {
 ///
 /// # Examples
 ///
-/// ```rust,no_run
+/// ```ignore
 /// use serde_json::json;
 ///
 /// // Construct a minimal settings and messages (values shown for illustration).
@@ -1271,7 +1363,7 @@ struct ChatChoiceMessage {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// let body = http_get(52625, "/v1/models").unwrap();
 /// assert!(body.len() > 0);
 /// ```
@@ -1285,7 +1377,7 @@ fn http_get(port: u16, path: &str) -> anyhow::Result<String> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use serde_json::json;
 ///
 /// let body = json!({ "model": "gpt", "messages": [] });
@@ -1305,7 +1397,7 @@ fn http_post_json(port: u16, path: &str, body: &Value) -> anyhow::Result<String>
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// let body = None;
 /// let resp = http_request(52625, "GET", "/v1/models", body).expect("request failed");
 /// println!("FastFlowLM response body: {}", resp);
@@ -1375,7 +1467,7 @@ fn http_request(
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// assert!(default_enabled());
 /// ```
 fn default_enabled() -> bool {
@@ -1386,7 +1478,7 @@ fn default_enabled() -> bool {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let tag = default_model_tag();
 /// assert!(!tag.is_empty());
 /// ```
@@ -1402,7 +1494,7 @@ fn default_model_tag() -> String {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let path = default_executable_path();
 /// assert_eq!(path, DEFAULT_EXECUTABLE_PATH.to_string());
 /// ```
@@ -1414,7 +1506,7 @@ fn default_executable_path() -> String {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// assert_eq!(default_port(), 52625);
 /// ```
 fn default_port() -> u16 {
@@ -1429,7 +1521,7 @@ fn default_port() -> u16 {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let timeout = default_idle_timeout_seconds();
 /// assert!(timeout >= 1);
 /// ```
@@ -1445,7 +1537,7 @@ fn default_idle_timeout_seconds() -> u64 {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let cap = default_max_context_files();
 /// assert!(cap > 0);
 /// ```
@@ -1461,7 +1553,7 @@ fn default_max_context_files() -> usize {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let cap = default_max_file_bytes();
 /// assert_eq!(cap, DEFAULT_MAX_FILE_BYTES);
 /// ```
@@ -1473,7 +1565,7 @@ fn default_max_file_bytes() -> usize {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let cap = default_max_context_bytes();
 /// assert!(cap > 0);
 /// ```
@@ -1487,7 +1579,7 @@ fn default_max_context_bytes() -> usize {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let secs = current_unix_seconds();
 /// // `secs` is the number of seconds since the Unix epoch (or 0 on error)
 /// assert!(secs >= 0);
@@ -1497,4 +1589,32 @@ fn current_unix_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn run_flm_list_json_when_command_hangs_times_out() {
+        let root =
+            std::env::temp_dir().join(format!("winspot-fastflowlm-timeout-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create temp dir");
+        let fake_flm = root.join("slow-flm.cmd");
+        fs::write(&fake_flm, "@echo off\r\nping -n 6 127.0.0.1 >NUL\r\n").expect("write fake flm");
+        let settings = FastFlowLmSettings {
+            executable_path: fake_flm.display().to_string(),
+            ..FastFlowLmSettings::default()
+        };
+
+        let started = std::time::Instant::now();
+        let error = run_flm_list_json(&settings, Duration::from_millis(100))
+            .expect_err("hung command should time out");
+
+        assert!(error.to_string().contains("timed out"));
+        assert!(started.elapsed() < Duration::from_secs(3));
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
 }

@@ -142,8 +142,8 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     public Task ExecuteSelectedAsync() => AcceptSelectionAsync();
 
     /// <summary>
-    — Execute the currently selected result's action or handle the built-in settings command.
-    </summary>
+    /// Execute the currently selected result's action or handle the built-in settings command.
+    /// </summary>
     /// <returns>`true` if the selection resulted in a normal backend response or the settings command was handled; `false` if there was no selection, the operation was cancelled or failed, or the result was handled as a FastFlowLM response (which updates the preview instead).</returns>
     public async Task<bool> AcceptSelectionAsync()
     {
@@ -298,6 +298,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private async Task RefreshAsync(string query)
     {
         _queryCancellation?.Cancel();
+        _actionCancellation?.Cancel();
         _queryCancellation = new CancellationTokenSource();
         var cancellationToken = _queryCancellation.Token;
 

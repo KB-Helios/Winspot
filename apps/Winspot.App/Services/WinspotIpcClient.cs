@@ -26,6 +26,8 @@ public interface IWinspotIpcClient
     Task<PreviewItem?> GetPreviewAsync(
         SearchResultItem result,
         CancellationToken cancellationToken);
+
+    Task<PluginValidationReport> GetPluginDiagnosticsAsync(CancellationToken cancellationToken);
 }
 
 public sealed class WinspotIpcClient : IWinspotIpcClient
@@ -34,6 +36,19 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
     private const string PipeName = "winspot-dev";
     private static readonly WinspotBackendProcess BackendProcess = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly string _pipeName;
+    private readonly bool _startBackendOnTimeout;
+
+    public WinspotIpcClient()
+        : this(PipeName, startBackendOnTimeout: true)
+    {
+    }
+
+    internal WinspotIpcClient(string pipeName, bool startBackendOnTimeout = false)
+    {
+        _pipeName = pipeName;
+        _startBackendOnTimeout = startBackendOnTimeout;
+    }
 
     /// Stops the daemon if this app started it. Called on shutdown so closing
     /// the launcher doesn't leave an orphaned backend behind.
@@ -212,6 +227,51 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         return latest;
     }
 
+    public async Task<PluginValidationReport> GetPluginDiagnosticsAsync(CancellationToken cancellationToken)
+    {
+        await using var pipe = await ConnectAsync(cancellationToken);
+
+        await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
+        using var reader = new StreamReader(pipe, leaveOpen: true);
+
+        await NegotiateAsync(writer, reader, cancellationToken);
+
+        var requestId = Guid.NewGuid().ToString("N");
+        var request = new IpcEnvelope(
+            ProtocolVersion,
+            requestId,
+            new IpcPayload(
+                "PluginDiagnosticsRequested",
+                JsonSerializer.SerializeToElement(new PluginDiagnosticsRequested(), JsonOptions)));
+
+        await writer.WriteLineAsync(
+            JsonSerializer.Serialize(request, JsonOptions).AsMemory(),
+            cancellationToken);
+
+        var line = await reader.ReadLineAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            throw new InvalidOperationException("Backend returned an empty plugin diagnostics response.");
+        }
+
+        var response = JsonSerializer.Deserialize<IpcEnvelope>(line, JsonOptions);
+        if (response?.Payload?.Type == "Error")
+        {
+            var error = response.Payload.Data.Deserialize<BackendError>(JsonOptions);
+            throw new InvalidOperationException(error?.Message ?? "Backend returned a plugin diagnostics error.");
+        }
+
+        if (response?.Payload?.Type != "PluginDiagnosticsReady")
+        {
+            throw new InvalidOperationException("Backend returned an unexpected plugin diagnostics response.");
+        }
+
+        var ready = response.Payload.Data.Deserialize<PluginDiagnosticsReady>(JsonOptions)
+            ?? throw new InvalidOperationException("Backend returned an invalid plugin diagnostics response.");
+
+        return ready.Report ?? PluginValidationReport.Empty;
+    }
+
     private sealed record IpcEnvelope(
         int ProtocolVersion,
         string RequestId,
@@ -257,6 +317,10 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         string Title,
         string Body,
         bool IsFinal);
+
+    private sealed record PluginDiagnosticsRequested();
+
+    private sealed record PluginDiagnosticsReady(PluginValidationReport? Report);
 
     private sealed record BackendError(
         string Code,
@@ -309,7 +373,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
     // A NamedPipeClientStream cannot be reconnected once a ConnectAsync attempt
     // has faulted, so every attempt uses a fresh stream and the caller owns the
     // returned, already-connected instance.
-    private static async Task<NamedPipeClientStream> ConnectAsync(
+    private async Task<NamedPipeClientStream> ConnectAsync(
         CancellationToken cancellationToken)
     {
         var pipe = CreatePipe();
@@ -322,7 +386,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         {
             await pipe.DisposeAsync();
 
-            if (!await BackendProcess.TryStartAsync(cancellationToken))
+            if (!_startBackendOnTimeout || !await BackendProcess.TryStartAsync(cancellationToken))
             {
                 throw;
             }
@@ -346,9 +410,9 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
         }
     }
 
-    private static NamedPipeClientStream CreatePipe() => new(
+    private NamedPipeClientStream CreatePipe() => new(
         ".",
-        PipeName,
+        _pipeName,
         PipeDirection.InOut,
         PipeOptions.Asynchronous);
 }

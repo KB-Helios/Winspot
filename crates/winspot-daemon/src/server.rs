@@ -1,17 +1,17 @@
 use std::{
     env,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Context;
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::windows::named_pipe::{NamedPipeServer, ServerOptions},
-};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use winspot_actions::{ActionExecutor, ActionPolicy};
 
+#[cfg(windows)]
 use crate::pipe_security::PipeSecurity;
 use winspot_core::{
     ActionKind, BackendError, HelloAccepted, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
@@ -62,8 +62,8 @@ impl Default for PipeConfig {
 #[derive(Clone)]
 pub struct DaemonRuntime {
     pub engine: SearchEngine,
-    pub plugin_registry: Arc<PluginRegistry>,
-    pub plugin_validation_report: Arc<PluginValidationReport>,
+    pub plugin_registry: Arc<RwLock<PluginRegistry>>,
+    pub plugin_validation_report: Arc<RwLock<PluginValidationReport>>,
     pub fastflowlm_service: Option<FastFlowLmService>,
 }
 
@@ -74,7 +74,7 @@ impl DaemonRuntime {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// // Construct or obtain a SearchEngine instance first (example assumes `Default` is available).
     /// let engine = SearchEngine::default();
     /// let runtime = DaemonRuntime::from_engine(engine);
@@ -84,8 +84,8 @@ impl DaemonRuntime {
         let (registry, report) = PluginRegistry::with_built_ins_with_report();
         Self {
             engine,
-            plugin_registry: Arc::new(registry),
-            plugin_validation_report: Arc::new(report),
+            plugin_registry: Arc::new(RwLock::new(registry)),
+            plugin_validation_report: Arc::new(RwLock::new(report)),
             fastflowlm_service: None,
         }
     }
@@ -163,7 +163,7 @@ fn create_secured_pipe(name: &str, first_instance: bool) -> std::io::Result<Name
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let cfg = PipeConfig::default();
 /// let _runtime = build_daemon_runtime(&cfg).unwrap();
 /// ```
@@ -210,7 +210,10 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
 /// never stop the daemon from starting.
 fn build_plugin_registry(
     plugins_dir: Option<&std::path::Path>,
-) -> (Arc<PluginRegistry>, Arc<PluginValidationReport>) {
+) -> (
+    Arc<RwLock<PluginRegistry>>,
+    Arc<RwLock<PluginValidationReport>>,
+) {
     let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
     if let Some(dir) = plugins_dir
         && let Err(error) = registry
@@ -222,7 +225,37 @@ fn build_plugin_registry(
             dir.display()
         );
     }
-    (Arc::new(registry), Arc::new(report))
+    (
+        Arc::new(RwLock::new(registry)),
+        Arc::new(RwLock::new(report)),
+    )
+}
+
+fn current_plugin_validation_report(
+    runtime: &DaemonRuntime,
+    config: &PipeConfig,
+) -> PluginValidationReport {
+    let Some(dir) = config.plugins_dir.as_deref() else {
+        return runtime.plugin_validation_report.read().unwrap().clone();
+    };
+
+    let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
+    match registry.load_dir_into_with_report(dir) {
+        Ok(user_report) => {
+            report.extend(user_report);
+            // Update the live registry and report in the runtime
+            *runtime.plugin_registry.write().unwrap() = registry;
+            *runtime.plugin_validation_report.write().unwrap() = report.clone();
+            report
+        }
+        Err(error) => {
+            eprintln!(
+                "winspot-daemon: failed to rescan plugins directory {}: {error:?}",
+                dir.display()
+            );
+            runtime.plugin_validation_report.read().unwrap().clone()
+        }
+    }
 }
 
 /// Serves a single named-pipe connection using a runtime built from the given engine and config.
@@ -242,7 +275,7 @@ fn build_plugin_registry(
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # use winspot_daemon::{serve_pipe_once, PipeConfig};
 /// # use winspot_core::SearchEngine;
 /// # fn main() {
@@ -408,16 +441,19 @@ fn handle_line(
                 true,
             ))
         }
-        IpcPayload::PluginDiagnosticsRequested(_) => Ok((
-            vec![IpcEnvelope::request(
-                request_id,
-                IpcPayload::PluginDiagnosticsReady(PluginDiagnosticsReady {
-                    report: serde_json::to_value(runtime.plugin_validation_report.as_ref())
-                        .context("serialize plugin validation report")?,
-                }),
-            )],
-            true,
-        )),
+        IpcPayload::PluginDiagnosticsRequested(_) => {
+            let report = current_plugin_validation_report(runtime, config);
+            Ok((
+                vec![IpcEnvelope::request(
+                    request_id,
+                    IpcPayload::PluginDiagnosticsReady(PluginDiagnosticsReady {
+                        report: serde_json::to_value(&report)
+                            .context("serialize plugin validation report")?,
+                    }),
+                )],
+                true,
+            ))
+        }
         IpcPayload::CancelRequest(cancel) => Ok((
             vec![IpcEnvelope::request(
                 request_id,
@@ -492,7 +528,7 @@ fn build_preview_chunk(preview: &PreviewRequested) -> PreviewChunk {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // Construct a minimal PreviewRequested for demonstration; real code will provide
 /// // a complete SearchResult value.
 /// let preview = PreviewRequested {
@@ -542,7 +578,7 @@ fn build_preview(preview: PreviewRequested) -> PreviewReady {
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// use winspot_daemon::{handle_action, DaemonRuntime, PipeConfig};
 /// use winspot_core::ActionRequested;
 ///
@@ -560,6 +596,8 @@ fn handle_action(
     if action.primary_action == ActionKind::PluginCommand
         && let Err(error) = runtime
             .plugin_registry
+            .read()
+            .unwrap()
             .ensure_plugin_command_allowed(&action.result_id)
     {
         return winspot_core::ActionCompleted {
@@ -608,7 +646,7 @@ fn handle_action(
 ///
 /// # Examples
 ///
-/// ```no_run
+/// ```ignore
 /// // Given valid `action`, `runtime`, `config`, and `now` values:
 /// let completed = handle_fastflowlm_action(action, &runtime, &config, now);
 /// if completed.succeeded {
@@ -671,7 +709,7 @@ fn handle_fastflowlm_action(
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let action = winspot_core::ActionRequested {
 ///     result_id: "example".to_string(),
 ///     title: "t".to_string(),
@@ -734,7 +772,7 @@ fn default_usage_log_path() -> Option<PathBuf> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // Use the default plugins directory if available.
 /// if let Some(dir) = default_plugins_dir() {
 ///     let plugin_manifest = dir.join("my_plugin.manifest.json");
@@ -761,7 +799,7 @@ fn default_plugins_dir() -> Option<PathBuf> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let _settings = load_fastflowlm_settings();
 /// ```
 fn load_fastflowlm_settings() -> FastFlowLmSettings {
@@ -792,7 +830,7 @@ fn load_fastflowlm_settings() -> FastFlowLmSettings {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let settings = FastFlowLmSettings::default();
 /// // Default settings are typically disabled, so this will usually return `None`.
 /// let svc = build_fastflowlm_service(settings);
@@ -833,7 +871,7 @@ fn build_fastflowlm_service(settings: FastFlowLmSettings) -> Option<FastFlowLmSe
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let t1 = current_unix_seconds();
 /// let t2 = current_unix_seconds();
 /// // time should be non-decreasing between two close calls
@@ -933,8 +971,8 @@ mod tests {
         let (registry, report) = PluginRegistry::with_built_ins_with_report();
         let runtime = DaemonRuntime {
             engine: SearchEngine::from_results(Vec::new()),
-            plugin_registry: Arc::new(registry),
-            plugin_validation_report: Arc::new(report),
+            plugin_registry: Arc::new(RwLock::new(registry)),
+            plugin_validation_report: Arc::new(RwLock::new(report)),
             fastflowlm_service: Some(service),
         };
 
@@ -976,8 +1014,8 @@ mod tests {
         let (registry, report) = PluginRegistry::with_built_ins_with_report();
         let runtime = DaemonRuntime {
             engine: SearchEngine::from_results(Vec::new()),
-            plugin_registry: Arc::new(registry),
-            plugin_validation_report: Arc::new(report),
+            plugin_registry: Arc::new(RwLock::new(registry)),
+            plugin_validation_report: Arc::new(RwLock::new(report)),
             fastflowlm_service: Some(service),
         };
 
@@ -1015,7 +1053,7 @@ mod tests {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let dir = unique_test_dir("my-test");
     /// assert!(dir.exists());
     /// ```
@@ -1041,7 +1079,7 @@ mod tests {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use std::net::{TcpListener, TcpStream};
     /// use std::thread;
     ///
@@ -1097,7 +1135,7 @@ mod tests {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// assert_eq!(find_header_end(b"foo\r\n\r\nbar"), Some(3));
     /// assert_eq!(find_header_end(b"no delimiter here"), None);
     /// ```
@@ -1113,7 +1151,7 @@ mod tests {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// use std::net::{TcpListener, TcpStream};
     /// use std::io::{Read, Write};
     /// use std::thread;

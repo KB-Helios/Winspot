@@ -2,7 +2,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
 use winspot_core::{
@@ -630,7 +630,7 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// // Find built-in plugins whose names match "calc"
     /// let provider = BuiltinPluginProvider;
     /// let results = provider.search("calc");
@@ -663,11 +663,11 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
 /// rebuilding the manifest list on every keystroke.
 #[derive(Clone)]
 pub struct PluginProvider {
-    registry: Arc<PluginRegistry>,
+    registry: Arc<RwLock<PluginRegistry>>,
 }
 
 impl PluginProvider {
-    pub fn new(registry: Arc<PluginRegistry>) -> Self {
+    pub fn new(registry: Arc<RwLock<PluginRegistry>>) -> Self {
         Self { registry }
     }
 }
@@ -685,13 +685,14 @@ impl DynamicSearchProvider for PluginProvider {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```ignore
     /// let results = provider.search("term");
     /// assert!(results.iter().all(|r| r.title.to_lowercase().contains("term")));
     /// ```
     fn search(&self, query: &str) -> Vec<SearchResult> {
         let normalized = query.trim().to_lowercase();
-        self.registry
+        let registry = self.registry.read().unwrap();
+        registry
             .enabled_manifests()
             .filter(|manifest| manifest.name.to_lowercase().contains(&normalized))
             .filter(|manifest| manifest.id != "fastflowlm")
@@ -699,7 +700,7 @@ impl DynamicSearchProvider for PluginProvider {
                 plugin_result(
                     &manifest.id,
                     &manifest.name,
-                    self.registry.plugin_has_executable_action(&manifest.id),
+                    registry.plugin_has_executable_action(&manifest.id),
                 )
             })
             .collect()

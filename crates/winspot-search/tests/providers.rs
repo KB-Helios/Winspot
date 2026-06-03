@@ -1,5 +1,5 @@
 use std::fs;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use winspot_core::{ActionKind, SearchResultKind};
 use winspot_plugins::PluginRegistry;
@@ -231,7 +231,7 @@ fn plugin_provider_includes_built_ins_and_loaded_manifests() {
 
     let mut registry = PluginRegistry::with_built_ins();
     registry.load_dir_into(&root).expect("merge manifests");
-    let provider = PluginProvider::new(Arc::new(registry));
+    let provider = PluginProvider::new(Arc::new(RwLock::new(registry)));
 
     let built_in = provider.search("clipboard");
     assert_eq!(built_in[0].title, "Clipboard");
@@ -261,7 +261,7 @@ fn plugin_provider_does_not_expose_actions_for_untrusted_user_manifest_ids() {
     assert!(report.has_warnings());
     assert!(!registry.plugin_has_executable_action("terminal"));
 
-    let provider = PluginProvider::new(Arc::new(registry));
+    let provider = PluginProvider::new(Arc::new(RwLock::new(registry)));
     let results = provider.search("user terminal");
 
     assert_eq!(results[0].title, "User Terminal");

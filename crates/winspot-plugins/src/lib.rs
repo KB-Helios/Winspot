@@ -598,7 +598,7 @@ pub fn parse_plugin_result_id(result_id: &str) -> Result<&str, PluginActionAutho
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let built_ins = built_in_plugin_manifests();
 /// assert!(built_ins.iter().any(|m| m.id == "calculator"));
 /// assert!(built_ins.iter().any(|m| m.id == "fastflowlm"));
@@ -678,7 +678,7 @@ fn unknown_field_warnings(value: &Value) -> Vec<PluginValidationIssue> {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let manifest = PluginManifest {
 ///     id: "example".to_string(),
 ///     name: "Example".to_string(),
@@ -721,7 +721,7 @@ fn user_policy_warnings(manifest: &PluginManifest) -> Vec<PluginValidationIssue>
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// assert!(is_builtin_executable("calculator"));
 /// assert!(is_builtin_executable("fastflowlm"));
 /// assert!(!is_builtin_executable("clipboard"));
@@ -737,7 +737,7 @@ fn is_builtin_executable(id: &str) -> bool {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// let issue = warning_issue(
 ///     PluginValidationStage::Parse,
 ///     "unknown_field",

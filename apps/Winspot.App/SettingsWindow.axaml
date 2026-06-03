@@ -113,101 +113,174 @@
             </TabItem>
 
             <TabItem Header="Plugins">
-                <ScrollViewer Margin="0,10,0,0">
-                <Border Classes="panel">
+                <ScrollViewer Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="12">
-                        <TextBlock Classes="section-title" Text="Plugins" />
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Built-in" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Classes="hint"
-                                VerticalAlignment="Center"
-                                Text="{Binding BuiltInPluginsText}"
-                                TextWrapping="Wrap" />
-                        </Grid>
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="User manifests" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Classes="hint"
-                                VerticalAlignment="Center"
-                                Text="{Binding UserPluginManifestCountText}" />
-                        </Grid>
-                        <Grid ColumnDefinitions="210,*,Auto" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Folder" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Classes="hint"
-                                VerticalAlignment="Center"
-                                Text="{Binding PluginsPath}"
-                                TextTrimming="CharacterEllipsis" />
-                            <Button
-                                Grid.Column="2"
-                                Classes="icon-button"
-                                Click="OnOpenPluginsFolderClick"
-                                ToolTip.Tip="Open folder">
-                                <TextBlock
-                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                    FontSize="15"
-                                    Text="&#xE838;" />
-                            </Button>
-                        </Grid>
-                        <Separator Margin="0,4" />
-                        <TextBlock Classes="section-title" Text="FastFlowLM" />
-                        <CheckBox Content="Enable FastFlowLM" IsChecked="{Binding FastFlowLmEnabled}" />
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Model tag" />
-                            <TextBox
-                                Grid.Column="1"
-                                Text="{Binding FastFlowLmModelTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                PlaceholderText="gemma4-it:e2b" />
-                        </Grid>
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Executable" />
-                            <TextBox
-                                Grid.Column="1"
-                                Text="{Binding FastFlowLmExecutablePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                PlaceholderText="flm" />
-                        </Grid>
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Port" />
-                            <TextBox
-                                Grid.Column="1"
-                                MaxLength="5"
-                                Text="{Binding FastFlowLmPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                PlaceholderText="52625" />
-                        </Grid>
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Idle timeout" />
-                            <TextBox
-                                Grid.Column="1"
-                                Text="{Binding FastFlowLmIdleTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                PlaceholderText="120" />
-                        </Grid>
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Context files" />
-                            <TextBox
-                                Grid.Column="1"
-                                Text="{Binding FastFlowLmMaxContextFiles, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                PlaceholderText="5" />
-                        </Grid>
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="File bytes" />
-                            <TextBox
-                                Grid.Column="1"
-                                Text="{Binding FastFlowLmMaxFileBytes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                PlaceholderText="1048576" />
-                        </Grid>
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Context bytes" />
-                            <TextBox
-                                Grid.Column="1"
-                                Text="{Binding FastFlowLmMaxContextBytes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                PlaceholderText="4194304" />
-                        </Grid>
+                        <Border Classes="panel">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="section-title" Text="Plugin validation" />
+                                        <TextBlock
+                                            Classes="hint"
+                                            Text="{Binding PluginValidationSummary}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock Classes="hint" Text="{Binding PluginValidationIssueSummary}" />
+                                        <TextBlock Classes="hint" Text="{Binding PluginValidationLastCheckedText}" />
+                                    </StackPanel>
+                                    <Button
+                                        Grid.Column="1"
+                                        Click="OnValidatePluginsClick"
+                                        Content="Validate"
+                                        IsEnabled="{Binding !IsPluginValidationRunning}"
+                                        MinWidth="92" />
+                                    <Button
+                                        Grid.Column="2"
+                                        AutomationProperties.Name="Open plugins folder"
+                                        Classes="icon-button"
+                                        Click="OnOpenPluginsFolderClick"
+                                        ToolTip.Tip="Open folder">
+                                        <TextBlock
+                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                            FontSize="15"
+                                            Text="&#xE838;" />
+                                    </Button>
+                                </Grid>
+
+                                <CheckBox
+                                    Content="Show only manifests with issues"
+                                    IsChecked="{Binding ShowOnlyPluginValidationIssues}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="panel">
+                            <StackPanel Spacing="12">
+                                <TextBlock Classes="section-title" Text="Plugin folder" />
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Built-in" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Classes="hint"
+                                        VerticalAlignment="Center"
+                                        Text="{Binding BuiltInPluginsText}"
+                                        TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="User manifests" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Classes="hint"
+                                        VerticalAlignment="Center"
+                                        Text="{Binding UserPluginManifestCountText}" />
+                                </Grid>
+                                <Grid ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Folder" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Classes="hint"
+                                        VerticalAlignment="Center"
+                                        Text="{Binding PluginsPath}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="panel">
+                            <StackPanel Spacing="12">
+                                <TextBlock Classes="section-title" Text="FastFlowLM" />
+                                <CheckBox Content="Enable FastFlowLM" IsChecked="{Binding FastFlowLmEnabled}" />
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Model tag" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmModelTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="gemma4-it:e2b" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Executable" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmExecutablePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="flm" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Port" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        MaxLength="5"
+                                        Text="{Binding FastFlowLmPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="52625" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Idle timeout" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmIdleTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="120" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Context files" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmMaxContextFiles, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="5" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="File bytes" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmMaxFileBytes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="1048576" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Context bytes" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmMaxContextBytes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="4194304" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding PluginValidationEntries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="vm:PluginValidationEntryViewItem" x:DataType="vm:PluginValidationEntryViewItem">
+                                    <Border Classes="panel" Margin="0,0,0,8">
+                                        <StackPanel Spacing="6">
+                                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                                <TextBlock
+                                                    Classes="label"
+                                                    Text="{Binding DisplayName}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" Classes="hint" Text="{Binding Status}" />
+                                                <TextBlock Grid.Column="2" Classes="hint" Text="{Binding TrustSummary}" />
+                                            </Grid>
+                                            <TextBlock
+                                                Classes="hint"
+                                                Text="{Binding ManifestPath}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <ItemsControl ItemsSource="{Binding Issues}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="vm:PluginValidationIssueViewItem" x:DataType="vm:PluginValidationIssueViewItem">
+                                                        <TextBlock
+                                                            Classes="hint"
+                                                            Text="{Binding DisplayText}"
+                                                            TextWrapping="Wrap" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
-                </Border>
                 </ScrollViewer>
             </TabItem>
 
