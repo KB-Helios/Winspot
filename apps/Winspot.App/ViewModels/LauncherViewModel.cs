@@ -14,6 +14,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     /// dispatching an action to the daemon. Kept in sync with the Rust
     /// `WINSPOT_SETTINGS_COMMAND_ID` constant.
     public const string SettingsCommandId = "command:winspot-settings";
+    public const string FastFlowLmResultId = "plugin:fastflowlm";
 
     private readonly IWinspotIpcClient _ipcClient;
     private CancellationTokenSource? _queryCancellation;
@@ -140,6 +141,10 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
     public Task ExecuteSelectedAsync() => AcceptSelectionAsync();
 
+    /// <summary>
+    /// Execute the currently selected result's action or handle the built-in settings command.
+    /// </summary>
+    /// <returns>`true` if the selection resulted in a normal backend response or the settings command was handled; `false` if there was no selection, the operation was cancelled or failed, or the result was handled as a FastFlowLM response (which updates the preview instead).</returns>
     public async Task<bool> AcceptSelectionAsync()
     {
         if (SelectedResult is null)
@@ -161,11 +166,20 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
         try
         {
-            var action = SelectedActionForExecution(SelectedResult);
-            StatusText = $"Running {action.Label} on {SelectedResult.Title}";
-            var message = await _ipcClient.ExecuteAsync(SelectedResult, action, cancellationToken);
+            var selectedResult = SelectedResult;
+            var action = SelectedActionForExecution(selectedResult);
+            StatusText = $"Running {action.Label} on {selectedResult.Title}";
+            var message = await _ipcClient.ExecuteAsync(selectedResult, action, cancellationToken);
             if (!cancellationToken.IsCancellationRequested)
             {
+                if (IsFastFlowLmResult(selectedResult))
+                {
+                    _previewCancellation?.Cancel();
+                    SetPreview(selectedResult.Title, message);
+                    StatusText = "FastFlowLM answered";
+                    return false;
+                }
+
                 StatusText = message;
                 return true;
             }
@@ -175,7 +189,10 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            StatusText = $"Action failed: {ex.Message}";
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                StatusText = $"Action failed: {ex.Message}";
+            }
         }
 
         return false;
@@ -253,6 +270,11 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
             .ToArray();
     }
 
+    /// <summary>
+    /// Selects which action should be executed for the given search result.
+    /// </summary>
+    /// <param name="result">The search result to obtain an executable action from.</param>
+    /// <returns>The action currently focused for execution, or an ActionItem constructed from the result's primary action if no action is focused.</returns>
     private ActionItem SelectedActionForExecution(SearchResultItem result)
     {
         if (FocusedActionIndex >= 0 && FocusedActionIndex < _selectedResultActions.Count)
@@ -263,9 +285,23 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         return new ActionItem(result.PrimaryAction, result.PrimaryAction, result.PrimaryAction);
     }
 
+    /// <summary>
+        /// Determines whether a search result originated from the FastFlowLM plugin.
+        /// </summary>
+        /// <param name="result">The search result to test.</param>
+        /// <returns>`true` if the result's Id equals <c>FastFlowLmResultId</c> or its Source equals "fastflowlm" (case-insensitive), `false` otherwise.</returns>
+        private static bool IsFastFlowLmResult(SearchResultItem result) =>
+        result.Id == FastFlowLmResultId
+        || string.Equals(result.Source, "fastflowlm", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Refreshes the search results for the provided query by streaming backend matches and updating the view-model state (results, selected result, preview, and status text).
+    /// </summary>
+    /// <param name="query">The search text to query; if null or whitespace the method clears results, resets the preview, and sets the status to prompt the user to start typing.</param>
     private async Task RefreshAsync(string query)
     {
         _queryCancellation?.Cancel();
+        _actionCancellation?.Cancel();
         _queryCancellation = new CancellationTokenSource();
         var cancellationToken = _queryCancellation.Token;
 

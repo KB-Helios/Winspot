@@ -7,7 +7,7 @@ namespace Winspot_App.Strings;
 
 internal static class SettingsDisplayStrings
 {
-    public const string BuiltInPluginsText = "Calculator, Terminal, Clipboard, Unit Conversion";
+    public const string BuiltInPluginsText = "Calculator, Terminal, Clipboard, Unit Conversion, FastFlowLM";
     public const string UserPluginManifestCountSingularFormat = "{0} user manifest";
     public const string UserPluginManifestCountPluralFormat = "{0} user manifests";
     public const string DiagnosticsFormat =

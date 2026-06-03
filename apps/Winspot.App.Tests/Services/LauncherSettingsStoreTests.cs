@@ -41,6 +41,14 @@ public sealed class LauncherSettingsStoreTests
         Assert.IsFalse(settings.LaunchOnStartup);
         Assert.AreEqual(ThemeMode.Dark, settings.ThemeMode);
         Assert.AreEqual(MotionProfile.Snappy240, settings.MotionProfile);
+        Assert.IsTrue(settings.FastFlowLm.Enabled);
+        Assert.AreEqual("gemma4-it:e2b", settings.FastFlowLm.ModelTag);
+        Assert.AreEqual("flm", settings.FastFlowLm.ExecutablePath);
+        Assert.AreEqual(52625, settings.FastFlowLm.Port);
+        Assert.AreEqual(120, settings.FastFlowLm.IdleTimeoutSeconds);
+        Assert.AreEqual(5, settings.FastFlowLm.MaxContextFiles);
+        Assert.AreEqual(1024 * 1024, settings.FastFlowLm.MaxFileBytes);
+        Assert.AreEqual(4 * 1024 * 1024, settings.FastFlowLm.MaxContextBytes);
         Assert.IsTrue(File.Exists(_settingsPath));
     }
 
@@ -56,6 +64,17 @@ public sealed class LauncherSettingsStoreTests
             ReduceMotion = true,
             ThemeMode = ThemeMode.Light,
             MotionProfile = MotionProfile.Reduced,
+            FastFlowLm = new FastFlowLmSettings
+            {
+                Enabled = false,
+                ModelTag = "qwen3:4b",
+                ExecutablePath = "custom-flm",
+                Port = 52626,
+                IdleTimeoutSeconds = 30,
+                MaxContextFiles = 3,
+                MaxFileBytes = 123,
+                MaxContextBytes = 456,
+            },
         });
 
         var reloaded = store.Load();
@@ -67,6 +86,14 @@ public sealed class LauncherSettingsStoreTests
         Assert.IsTrue(reloaded.ReduceMotion);
         Assert.AreEqual(ThemeMode.Light, reloaded.ThemeMode);
         Assert.AreEqual(MotionProfile.Reduced, reloaded.MotionProfile);
+        Assert.IsFalse(reloaded.FastFlowLm.Enabled);
+        Assert.AreEqual("qwen3:4b", reloaded.FastFlowLm.ModelTag);
+        Assert.AreEqual("custom-flm", reloaded.FastFlowLm.ExecutablePath);
+        Assert.AreEqual(52626, reloaded.FastFlowLm.Port);
+        Assert.AreEqual(30, reloaded.FastFlowLm.IdleTimeoutSeconds);
+        Assert.AreEqual(3, reloaded.FastFlowLm.MaxContextFiles);
+        Assert.AreEqual(123, reloaded.FastFlowLm.MaxFileBytes);
+        Assert.AreEqual(456, reloaded.FastFlowLm.MaxContextBytes);
     }
 
     [TestMethod]

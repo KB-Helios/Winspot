@@ -591,6 +591,19 @@ pub fn parse_plugin_result_id(result_id: &str) -> Result<&str, PluginActionAutho
     }
 }
 
+/// Provides the collection of built-in plugin manifests shipped with the application.
+///
+/// The returned vector contains the default manifests for internal plugins (enabled by default),
+/// including "calculator", "terminal", "clipboard", "unit-conversion", and "fastflowlm".
+///
+/// # Examples
+///
+/// ```ignore
+/// let built_ins = built_in_plugin_manifests();
+/// assert!(built_ins.iter().any(|m| m.id == "calculator"));
+/// assert!(built_ins.iter().any(|m| m.id == "fastflowlm"));
+/// assert_eq!(built_ins.len(), 5);
+/// ```
 pub fn built_in_plugin_manifests() -> Vec<PluginManifest> {
     vec![
         PluginManifest {
@@ -615,6 +628,16 @@ pub fn built_in_plugin_manifests() -> Vec<PluginManifest> {
             id: "unit-conversion".to_string(),
             name: "Unit Conversion".to_string(),
             capabilities: vec![ActionCapability::ClipboardWrite],
+            enabled: true,
+        },
+        PluginManifest {
+            id: "fastflowlm".to_string(),
+            name: "FastFlowLM".to_string(),
+            capabilities: vec![
+                ActionCapability::PluginExecution,
+                ActionCapability::ProcessExecution,
+                ActionCapability::FilesystemRead,
+            ],
             enabled: true,
         },
     ]
@@ -642,6 +665,30 @@ fn unknown_field_warnings(value: &Value) -> Vec<PluginValidationIssue> {
         .collect()
 }
 
+/// Produce policy warning issues for executable capabilities declared by a user plugin.
+///
+/// This inspects the manifest's capabilities and emits one `PluginValidationIssue` (severity:
+/// `Warning`, stage: `Policy`, code: `"ignored_user_executable_capability"`) for each capability
+/// that grants executable behavior (`PluginExecution`, `ProcessExecution`, `ShellExecution`),
+/// since user plugins are search-only in V1.
+///
+/// # Returns
+///
+/// A `Vec<PluginValidationIssue>` containing one warning issue per matching capability.
+///
+/// # Examples
+///
+/// ```ignore
+/// let manifest = PluginManifest {
+///     id: "example".to_string(),
+///     name: "Example".to_string(),
+///     capabilities: vec![ActionCapability::PluginExecution],
+///     enabled: true,
+/// };
+/// let warnings = user_policy_warnings(&manifest);
+/// assert_eq!(warnings.len(), 1);
+/// assert_eq!(warnings[0].stage, PluginValidationStage::Policy);
+/// ```
 fn user_policy_warnings(manifest: &PluginManifest) -> Vec<PluginValidationIssue> {
     manifest
         .capabilities
@@ -668,10 +715,38 @@ fn user_policy_warnings(manifest: &PluginManifest) -> Vec<PluginValidationIssue>
         .collect()
 }
 
+/// Checks whether a built-in plugin id is treated as providing an executable action.
+///
+/// Returns `true` if the id is one of `"calculator"`, `"terminal"`, or `"fastflowlm"`, `false` otherwise.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert!(is_builtin_executable("calculator"));
+/// assert!(is_builtin_executable("fastflowlm"));
+/// assert!(!is_builtin_executable("clipboard"));
+/// ```
 fn is_builtin_executable(id: &str) -> bool {
-    matches!(id, "calculator" | "terminal")
+    matches!(id, "calculator" | "terminal" | "fastflowlm")
 }
 
+/// Creates a plugin validation issue with severity `Warning`.
+///
+/// The returned `PluginValidationIssue` is populated with the provided
+/// `stage`, `code`, and `message`, and its `severity` is set to `Warning`.
+///
+/// # Examples
+///
+/// ```ignore
+/// let issue = warning_issue(
+///     PluginValidationStage::Parse,
+///     "unknown_field",
+///     "field `foo` is ignored",
+/// );
+/// assert_eq!(issue.severity, PluginValidationSeverity::Warning);
+/// assert_eq!(issue.stage, PluginValidationStage::Parse);
+/// assert_eq!(issue.code, "unknown_field");
+/// ```
 fn warning_issue(
     stage: PluginValidationStage,
     code: impl Into<String>,

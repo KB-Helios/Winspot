@@ -617,6 +617,26 @@ fn plugin_result(id: &str, name: &str, executable: bool) -> SearchResult {
 pub struct BuiltInPluginProvider;
 
 impl DynamicSearchProvider for BuiltInPluginProvider {
+    /// Returns plugin search results whose names contain the given query (case-insensitive),
+    /// excluding the built-in plugin with id `"fastflowlm"`.
+    ///
+    /// # Parameters
+    ///
+    /// - `query`: The user query used to match against plugin names; leading/trailing whitespace is ignored and matching is case-insensitive.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `SearchResult` entries representing matching enabled built-in plugins. Each result includes a plugin id, name, and whether the plugin exposes an executable action.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Find built-in plugins whose names match "calc"
+    /// let provider = BuiltinPluginProvider;
+    /// let results = provider.search("calc");
+    /// // `results` will contain `SearchResult` entries for matching enabled built-in plugins,
+    /// // but never the plugin with id "fastflowlm".
+    /// ```
     fn search(&self, query: &str) -> Vec<SearchResult> {
         let normalized = query.trim().to_lowercase();
         built_in_plugin_manifests()
@@ -624,6 +644,7 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
             .filter(|manifest| {
                 manifest.enabled && manifest.name.to_lowercase().contains(&normalized)
             })
+            .filter(|manifest| manifest.id != "fastflowlm")
             .map(|manifest| {
                 plugin_result(
                     &manifest.id,
@@ -652,12 +673,31 @@ impl PluginProvider {
 }
 
 impl DynamicSearchProvider for PluginProvider {
+    /// Searches the plugin registry for enabled plugins whose names contain the given query.
+    ///
+    /// The search is case-insensitive, trims surrounding whitespace, and excludes the built-in
+    /// plugin manifest with id `"fastflowlm"`. Each matching manifest is converted into a
+    /// `SearchResult` that indicates whether the plugin exposes an executable action.
+    ///
+    /// # Parameters
+    ///
+    /// - `query`: Text to match against plugin names.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let results = provider.search("term");
+    /// assert!(results.iter().all(|r| r.title.to_lowercase().contains("term")));
+    /// ```
     fn search(&self, query: &str) -> Vec<SearchResult> {
         let normalized = query.trim().to_lowercase();
-        let registry = self.registry.read().unwrap();
+        let Ok(registry) = self.registry.read() else {
+            return Vec::new();
+        };
         registry
             .enabled_manifests()
             .filter(|manifest| manifest.name.to_lowercase().contains(&normalized))
+            .filter(|manifest| manifest.id != "fastflowlm")
             .map(|manifest| {
                 plugin_result(
                     &manifest.id,

@@ -188,6 +188,96 @@ public sealed class LauncherViewModelTests
     }
 
     [TestMethod]
+    public async Task AcceptSelection_WithFastFlowLmResult_KeepsLauncherOpenAndShowsAnswerInPreview()
+    {
+        var client = new FakeWinspotIpcClient { NextExecuteMessage = "The roadmap is ready." };
+        var viewModel = new LauncherViewModel(client);
+        viewModel.SelectedResult = new SearchResultItem(
+            "plugin:fastflowlm",
+            "summarize roadmap",
+            "Ask FastFlowLM with launcher context",
+            "Plugin",
+            1,
+            "PluginCommand",
+            new[] { new ActionItem("run-plugin", "Ask", "PluginCommand") },
+            "fastflowlm");
+
+        var shouldHide = await viewModel.AcceptSelectionAsync();
+
+        Assert.IsFalse(shouldHide);
+        Assert.AreEqual("FastFlowLM answered", viewModel.StatusText);
+        Assert.AreEqual("summarize roadmap", viewModel.PreviewTitle);
+        Assert.AreEqual("The roadmap is ready.", viewModel.PreviewBody);
+    }
+
+    [TestMethod]
+    public async Task Query_WhenFastFlowLmActionIsRunning_CancelsActionBeforeItCanOverwritePreview()
+    {
+        var client = new FakeWinspotIpcClient
+        {
+            ExecuteCompletion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously),
+            ExecuteStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        client.SearchBatches.Enqueue(new[] { Result("app:notes", "Notes") });
+        var viewModel = new LauncherViewModel(client);
+        viewModel.SelectedResult = new SearchResultItem(
+            "plugin:fastflowlm",
+            "summarize roadmap",
+            "Ask FastFlowLM with launcher context",
+            "Plugin",
+            1,
+            "PluginCommand",
+            new[] { new ActionItem("run-plugin", "Ask", "PluginCommand") },
+            "fastflowlm");
+
+        var actionTask = viewModel.AcceptSelectionAsync();
+        await client.ExecuteStarted.Task;
+        var searchTask = client.WaitForSearchAsync();
+
+        viewModel.Query = "notes";
+        await searchTask;
+        client.ExecuteCompletion.SetResult("stale FastFlowLM answer");
+        await actionTask;
+
+        Assert.IsTrue(client.ExecuteCancellationObserved);
+        Assert.AreNotEqual("FastFlowLM answered", viewModel.StatusText);
+        Assert.AreNotEqual("stale FastFlowLM answer", viewModel.PreviewBody);
+    }
+
+    [TestMethod]
+    public async Task Query_WhenCancelledFastFlowLmActionFails_DoesNotOverwriteStatus()
+    {
+        var client = new FakeWinspotIpcClient
+        {
+            ExecuteCompletion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously),
+            ExecuteIgnoresCancellation = true,
+            ExecuteStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        client.SearchBatches.Enqueue(new[] { Result("app:notes", "Notes") });
+        var viewModel = new LauncherViewModel(client);
+        viewModel.SelectedResult = new SearchResultItem(
+            "plugin:fastflowlm",
+            "summarize roadmap",
+            "Ask FastFlowLM with launcher context",
+            "Plugin",
+            1,
+            "PluginCommand",
+            new[] { new ActionItem("run-plugin", "Ask", "PluginCommand") },
+            "fastflowlm");
+
+        var actionTask = viewModel.AcceptSelectionAsync();
+        await client.ExecuteStarted.Task;
+        var searchTask = client.WaitForSearchAsync();
+
+        viewModel.Query = "notes";
+        await searchTask;
+        client.ExecuteCompletion.SetException(new InvalidOperationException("stale failure"));
+        await actionTask;
+
+        Assert.AreNotEqual("Action failed: stale failure", viewModel.StatusText);
+    }
+
+    [TestMethod]
     public async Task AcceptSelection_WhenActionChipIsFocused_ExecutesFocusedActionKind()
     {
         var client = new FakeWinspotIpcClient();
@@ -268,13 +358,39 @@ public sealed class LauncherViewModelTests
 
         public string? LastActionKind { get; private set; }
 
-        public Task<string> ExecuteAsync(
+        public string NextExecuteMessage { get; set; } = "Executed";
+
+        public TaskCompletionSource? ExecuteStarted { get; init; }
+
+        public TaskCompletionSource<string>? ExecuteCompletion { get; init; }
+
+        public bool ExecuteIgnoresCancellation { get; init; }
+
+        public bool ExecuteCancellationObserved { get; private set; }
+
+        public async Task<string> ExecuteAsync(
             SearchResultItem result,
             ActionItem action,
             CancellationToken cancellationToken)
         {
             LastActionKind = action.Kind;
-            return Task.FromResult("Executed");
+            ExecuteStarted?.SetResult();
+            if (ExecuteCompletion is not null)
+            {
+                try
+                {
+                    return ExecuteIgnoresCancellation
+                        ? await ExecuteCompletion.Task
+                        : await ExecuteCompletion.Task.WaitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    ExecuteCancellationObserved = true;
+                    throw;
+                }
+            }
+
+            return NextExecuteMessage;
         }
 
         public Task<PreviewItem?> GetPreviewAsync(SearchResultItem result, CancellationToken cancellationToken)

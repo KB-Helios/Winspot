@@ -190,6 +190,37 @@ public sealed class SettingsViewModelTests
     }
 
     [TestMethod]
+    public void TrySave_WithFastFlowLmDisabledAndInvalidNumbers_PersistsDisabledSettings()
+    {
+        var store = new LauncherSettingsStore(_settingsPath);
+        var viewModel = new SettingsViewModel(store)
+        {
+            FastFlowLmEnabled = false,
+            FastFlowLmPort = string.Empty,
+            FastFlowLmIdleTimeoutSeconds = "not-a-number",
+            FastFlowLmMaxContextFiles = "0",
+            FastFlowLmMaxFileBytes = "-1",
+            FastFlowLmMaxContextBytes = " ",
+        };
+
+        Assert.IsTrue(viewModel.TrySave());
+
+        var reloaded = store.Load();
+        Assert.IsFalse(reloaded.FastFlowLm.Enabled);
+    }
+
+    [TestMethod]
+    public void BuildSettings_WithFastFlowLmPortAboveTcpRange_UsesDefaultPort()
+    {
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath))
+        {
+            FastFlowLmPort = "99999",
+        };
+
+        Assert.AreEqual(52625, viewModel.BuildSettings().FastFlowLm.Port);
+    }
+
+    [TestMethod]
     public void TrySave_RaisesSavedEventWithSnapshot()
     {
         var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath))

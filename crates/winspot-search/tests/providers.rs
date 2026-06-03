@@ -269,3 +269,17 @@ fn plugin_provider_does_not_expose_actions_for_untrusted_user_manifest_ids() {
 
     fs::remove_dir_all(root).expect("cleanup");
 }
+
+#[test]
+fn plugin_provider_when_registry_lock_is_poisoned_returns_no_results() {
+    let registry = Arc::new(RwLock::new(PluginRegistry::with_built_ins()));
+    let poison_target = Arc::clone(&registry);
+    let _ = std::panic::catch_unwind(|| {
+        let _guard = poison_target.write().expect("lock registry");
+        panic!("poison plugin registry");
+    });
+
+    let provider = PluginProvider::new(registry);
+
+    assert!(provider.search("clipboard").is_empty());
+}

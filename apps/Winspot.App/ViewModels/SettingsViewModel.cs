@@ -27,6 +27,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _showTrayIcon = true;
     private ThemeMode _themeMode = ThemeMode.Dark;
     private MotionProfile _motionProfile = MotionProfile.Snappy240;
+    private bool _fastFlowLmEnabled = true;
+    private string _fastFlowLmModelTag = "gemma4-it:e2b";
+    private string _fastFlowLmExecutablePath = "flm";
+    private string _fastFlowLmPort = "52625";
+    private string _fastFlowLmIdleTimeoutSeconds = "120";
+    private string _fastFlowLmMaxContextFiles = "5";
+    private string _fastFlowLmMaxFileBytes = (1024 * 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private string _fastFlowLmMaxContextBytes = (4 * 1024 * 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private int _selectedSectionIndex;
     private string _statusMessage = string.Empty;
     private bool _isPluginValidationRunning;
@@ -193,6 +201,54 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool FastFlowLmEnabled
+    {
+        get => _fastFlowLmEnabled;
+        set => SetField(ref _fastFlowLmEnabled, value);
+    }
+
+    public string FastFlowLmModelTag
+    {
+        get => _fastFlowLmModelTag;
+        set => SetField(ref _fastFlowLmModelTag, value);
+    }
+
+    public string FastFlowLmExecutablePath
+    {
+        get => _fastFlowLmExecutablePath;
+        set => SetField(ref _fastFlowLmExecutablePath, value);
+    }
+
+    public string FastFlowLmPort
+    {
+        get => _fastFlowLmPort;
+        set => SetField(ref _fastFlowLmPort, value);
+    }
+
+    public string FastFlowLmIdleTimeoutSeconds
+    {
+        get => _fastFlowLmIdleTimeoutSeconds;
+        set => SetField(ref _fastFlowLmIdleTimeoutSeconds, value);
+    }
+
+    public string FastFlowLmMaxContextFiles
+    {
+        get => _fastFlowLmMaxContextFiles;
+        set => SetField(ref _fastFlowLmMaxContextFiles, value);
+    }
+
+    public string FastFlowLmMaxFileBytes
+    {
+        get => _fastFlowLmMaxFileBytes;
+        set => SetField(ref _fastFlowLmMaxFileBytes, value);
+    }
+
+    public string FastFlowLmMaxContextBytes
+    {
+        get => _fastFlowLmMaxContextBytes;
+        set => SetField(ref _fastFlowLmMaxContextBytes, value);
+    }
+
     public string StatusMessage
     {
         get => _statusMessage;
@@ -256,8 +312,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// The activation chord as it would be shown to the user (e.g. "Ctrl Alt Space").
     public string HotkeyPreview => BuildBinding().ToDisplayString();
 
-    public bool IsValid => BuildModifiers().Count > 0 && IsKeyValid(_key);
+    public bool IsValid => BuildModifiers().Count > 0 && IsKeyValid(_key) && FastFlowLmNumbersCanBeSaved();
 
+    /// <summary>
+    /// Builds a LauncherSettings snapshot from the view-model's current state.
+    /// </summary>
+    /// <returns>A <see cref="LauncherSettings"/> populated with the view-model's hotkey, launch-on-startup and tray settings, motion and theme settings, and FastFlowLM configuration.</returns>
     public LauncherSettings BuildSettings() => new()
     {
         Hotkey = BuildBinding(),
@@ -266,8 +326,22 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         ReduceMotion = ReduceMotion,
         ThemeMode = _themeMode,
         MotionProfile = _motionProfile,
+        FastFlowLm = BuildFastFlowLmSettings(),
     };
 
+    /// <summary>
+    /// Validates current view-model settings and, if valid, persists them, applies startup registration, updates status, and raises the Saved event.
+    /// </summary>
+    /// <remarks>
+    /// Validation performed:
+    /// - Requires at least one hotkey modifier (Ctrl, Alt, Shift, or Win).
+    /// - Requires a valid hotkey key (single letter/digit or a named key such as Space or Enter).
+    /// - Requires FastFlowLM numeric fields to be positive whole numbers when FastFlowLM is enabled.
+    /// - Rejects hotkeys reserved by Windows.
+    /// On validation failure the method sets <see cref="StatusMessage"/> to an explanatory message and does not persist changes.
+    /// On success the method saves settings to the store, applies startup registration according to the saved setting, sets <see cref="StatusMessage"/> to "Saved.", and invokes the <see cref="Saved"/> event with the persisted settings.
+    /// </remarks>
+    /// <returns>`true` if settings were validated and saved successfully, `false` otherwise.</returns>
     public bool TrySave()
     {
         if (BuildModifiers().Count == 0)
@@ -279,6 +353,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         if (!IsKeyValid(_key))
         {
             StatusMessage = "Enter a single letter or number, or a key such as Space or Enter.";
+            return false;
+        }
+
+        if (_fastFlowLmEnabled && !FastFlowLmNumbersAreValid())
+        {
+            StatusMessage = "FastFlowLM numeric settings must be positive whole numbers.";
             return false;
         }
 
@@ -397,8 +477,20 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _showTrayIcon = settings.ShowTrayIcon;
         _themeMode = settings.ThemeMode;
         _motionProfile = settings.ReduceMotion ? MotionProfile.Reduced : settings.MotionProfile;
+        _fastFlowLmEnabled = settings.FastFlowLm.Enabled;
+        _fastFlowLmModelTag = settings.FastFlowLm.ModelTag;
+        _fastFlowLmExecutablePath = settings.FastFlowLm.ExecutablePath;
+        _fastFlowLmPort = settings.FastFlowLm.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _fastFlowLmIdleTimeoutSeconds = settings.FastFlowLm.IdleTimeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _fastFlowLmMaxContextFiles = settings.FastFlowLm.MaxContextFiles.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _fastFlowLmMaxFileBytes = settings.FastFlowLm.MaxFileBytes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _fastFlowLmMaxContextBytes = settings.FastFlowLm.MaxContextBytes.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// Constructs a HotkeyBinding that reflects the view-model's current key and modifier selection.
+    /// </summary>
+    /// <returns>A HotkeyBinding whose Key is the trimmed key string (or empty if none) and whose Modifiers are the current modifier list.</returns>
     private HotkeyBinding BuildBinding() => new()
     {
         Key = string.IsNullOrWhiteSpace(_key) ? string.Empty : _key.Trim(),
@@ -447,7 +539,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         entry.ManifestPath,
         entry.SafeIssues
             .Select(issue => new PluginValidationIssueViewItem(SettingsDisplayStrings.FormatPluginValidationIssue(issue)))
-            .ToArray());
+        .ToArray());
 
     private static bool IsKeyValid(string? key)
     {
@@ -466,6 +558,68 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return NamedKeys.Contains(trimmed);
     }
 
+    /// <summary>
+    /// Create a FastFlowLmSettings instance from the view-model's FastFlowLM fields.
+    /// </summary>
+    /// <returns>
+    /// A FastFlowLmSettings populated from the view-model: `Enabled` taken from the backing flag; `ModelTag` and `ExecutablePath` trimmed and replaced by defaults when empty; numeric fields parsed from their string representations using `ParsePositiveInt`, falling back to default values when parsing fails or values are invalid.
+    /// </returns>
+    private FastFlowLmSettings BuildFastFlowLmSettings()
+    {
+        var defaults = new FastFlowLmSettings();
+        return new FastFlowLmSettings
+        {
+            Enabled = _fastFlowLmEnabled,
+            ModelTag = string.IsNullOrWhiteSpace(_fastFlowLmModelTag)
+                ? defaults.ModelTag
+                : _fastFlowLmModelTag.Trim(),
+            ExecutablePath = string.IsNullOrWhiteSpace(_fastFlowLmExecutablePath)
+                ? defaults.ExecutablePath
+                : _fastFlowLmExecutablePath.Trim(),
+            Port = ParsePositiveInt(_fastFlowLmPort, defaults.Port, maxValue: 65535),
+            IdleTimeoutSeconds = ParsePositiveInt(_fastFlowLmIdleTimeoutSeconds, defaults.IdleTimeoutSeconds),
+            MaxContextFiles = ParsePositiveInt(_fastFlowLmMaxContextFiles, defaults.MaxContextFiles),
+            MaxFileBytes = ParsePositiveInt(_fastFlowLmMaxFileBytes, defaults.MaxFileBytes),
+            MaxContextBytes = ParsePositiveInt(_fastFlowLmMaxContextBytes, defaults.MaxContextBytes),
+        };
+    }
+
+    private bool FastFlowLmNumbersCanBeSaved() =>
+        !_fastFlowLmEnabled || FastFlowLmNumbersAreValid();
+
+    private bool FastFlowLmNumbersAreValid() =>
+        IsPositiveInt(_fastFlowLmPort, maxValue: 65535)
+        && IsPositiveInt(_fastFlowLmIdleTimeoutSeconds)
+        && IsPositiveInt(_fastFlowLmMaxContextFiles)
+        && IsPositiveInt(_fastFlowLmMaxFileBytes)
+        && IsPositiveInt(_fastFlowLmMaxContextBytes);
+
+    private static bool IsPositiveInt(string? value, int maxValue = int.MaxValue) =>
+        int.TryParse(
+            value,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+        && parsed > 0
+        && parsed <= maxValue;
+
+    private static int ParsePositiveInt(string? value, int fallback, int maxValue = int.MaxValue) =>
+        int.TryParse(
+            value,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+        && parsed > 0
+        && parsed <= maxValue
+            ? parsed
+            : fallback;
+
+    /// <summary>
+    /// Sets a boolean backing field for a hotkey modifier and, when the value changes, raises property-changed notifications for the modifier plus the derived HotkeyPreview and DiagnosticsText properties.
+    /// </summary>
+    /// <param name="field">Reference to the backing boolean field for the modifier (e.g., _useControl).</param>
+    /// <param name="value">New boolean value to assign to the backing field.</param>
+    /// <param name="propertyName">Name of the property being set; provided automatically by the caller via CallerMemberName if omitted.</param>
     private void SetChord(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
     {
         if (SetField(ref field, value, propertyName))

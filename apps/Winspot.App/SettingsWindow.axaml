@@ -184,6 +184,70 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Classes="panel">
+                            <StackPanel Spacing="12">
+                                <TextBlock Classes="section-title" Text="FastFlowLM" />
+                                <CheckBox Content="Enable FastFlowLM" IsChecked="{Binding FastFlowLmEnabled}" />
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Model tag" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmModelTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="gemma4-it:e2b" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Executable" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmExecutablePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="flm" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Port" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        MaxLength="5"
+                                        Text="{Binding FastFlowLmPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="52625" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Idle timeout" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmIdleTimeoutSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="120" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Context files" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmMaxContextFiles, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="5" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="File bytes" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmMaxFileBytes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="1048576" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Context bytes" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding FastFlowLmEnabled}"
+                                        Text="{Binding FastFlowLmMaxContextBytes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="4194304" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <ItemsControl ItemsSource="{Binding PluginValidationEntries}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="vm:PluginValidationEntryViewItem" x:DataType="vm:PluginValidationEntryViewItem">

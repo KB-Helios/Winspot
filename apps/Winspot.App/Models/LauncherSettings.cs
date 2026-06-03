@@ -36,4 +36,28 @@ public sealed class LauncherSettings
     /// avoids artificial 60Hz waits; actual FPS is determined by the display
     /// and compositor.
     public MotionProfile MotionProfile { get; init; } = MotionProfile.Snappy240;
+
+    /// FastFlowLM local server integration. The daemon reads this same
+    /// `fastFlowLm` object from settings.json and does not start FLM unless the
+    /// user executes an AI result.
+    public FastFlowLmSettings FastFlowLm { get; init; } = new();
+}
+
+public sealed class FastFlowLmSettings
+{
+    public bool Enabled { get; init; } = true;
+
+    public string ModelTag { get; init; } = "gemma4-it:e2b";
+
+    public string ExecutablePath { get; init; } = "flm";
+
+    public int Port { get; init; } = 52625;
+
+    public int IdleTimeoutSeconds { get; init; } = 120;
+
+    public int MaxContextFiles { get; init; } = 5;
+
+    public int MaxFileBytes { get; init; } = 1024 * 1024;
+
+    public int MaxContextBytes { get; init; } = 4 * 1024 * 1024;
 }
