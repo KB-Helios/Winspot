@@ -3,7 +3,6 @@
     x:DataType="vm:SettingsViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:models="using:Winspot_App.Models"
     xmlns:vm="using:Winspot_App.ViewModels"
     Title="Winspot Settings"
     Width="720"
@@ -136,6 +135,7 @@
                                         MinWidth="92" />
                                     <Button
                                         Grid.Column="2"
+                                        AutomationProperties.Name="Open plugins folder"
                                         Classes="icon-button"
                                         Click="OnOpenPluginsFolderClick"
                                         ToolTip.Tip="Open folder">
@@ -186,7 +186,7 @@
 
                         <ItemsControl ItemsSource="{Binding PluginValidationEntries}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="models:PluginValidationEntry" x:DataType="models:PluginValidationEntry">
+                                <DataTemplate DataType="vm:PluginValidationEntryViewItem" x:DataType="vm:PluginValidationEntryViewItem">
                                     <Border Classes="panel" Margin="0,0,0,8">
                                         <StackPanel Spacing="6">
                                             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
@@ -201,9 +201,9 @@
                                                 Classes="hint"
                                                 Text="{Binding ManifestPath}"
                                                 TextTrimming="CharacterEllipsis" />
-                                            <ItemsControl ItemsSource="{Binding SafeIssues}">
+                                            <ItemsControl ItemsSource="{Binding Issues}">
                                                 <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="models:PluginValidationIssue" x:DataType="models:PluginValidationIssue">
+                                                    <DataTemplate DataType="vm:PluginValidationIssueViewItem" x:DataType="vm:PluginValidationIssueViewItem">
                                                         <TextBlock
                                                             Classes="hint"
                                                             Text="{Binding DisplayText}"

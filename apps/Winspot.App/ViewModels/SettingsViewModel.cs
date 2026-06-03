@@ -31,11 +31,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private string _statusMessage = string.Empty;
     private bool _isPluginValidationRunning;
     private PluginValidationReport _pluginValidationReport = PluginValidationReport.Empty;
-    private IReadOnlyList<PluginValidationEntry> _pluginValidationEntries = Array.Empty<PluginValidationEntry>();
+    private IReadOnlyList<PluginValidationEntryViewItem> _pluginValidationEntries = Array.Empty<PluginValidationEntryViewItem>();
     private string _pluginValidationSummary = SettingsDisplayStrings.PluginValidationNotChecked;
-    private string _pluginValidationIssueSummary =
-        SettingsDisplayStrings.FormatPluginValidationIssueSummary(PluginValidationReport.Empty);
-    private string _pluginValidationHealth = "Unchecked";
+    private string _pluginValidationIssueSummary = string.Empty;
+    private string _pluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthUnchecked;
     private string _pluginValidationLastCheckedText = string.Empty;
     private bool _showOnlyPluginValidationIssues = true;
 
@@ -248,7 +247,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
-    public IReadOnlyList<PluginValidationEntry> PluginValidationEntries
+    public IReadOnlyList<PluginValidationEntryViewItem> PluginValidationEntries
     {
         get => _pluginValidationEntries;
         private set => SetField(ref _pluginValidationEntries, value);
@@ -333,14 +332,26 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public async Task RefreshPluginValidationAsync(CancellationToken cancellationToken)
     {
+        if (IsPluginValidationRunning)
+        {
+            return;
+        }
+
+        var previousReport = _pluginValidationReport;
+        var previousEntries = PluginValidationEntries;
+        var previousHealth = PluginValidationHealth;
+        var previousSummary = PluginValidationSummary;
+        var previousIssueSummary = PluginValidationIssueSummary;
+        var previousLastCheckedText = PluginValidationLastCheckedText;
+
         IsPluginValidationRunning = true;
         PluginValidationSummary = SettingsDisplayStrings.PluginValidationChecking;
-        PluginValidationHealth = "Checking";
+        PluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthChecking;
 
         try
         {
             _pluginValidationReport = await _ipcClient.GetPluginDiagnosticsAsync(cancellationToken).ConfigureAwait(true);
-            PluginValidationHealth = _pluginValidationReport.Health;
+            PluginValidationHealth = SettingsDisplayStrings.FormatPluginValidationHealth(_pluginValidationReport.Health);
             PluginValidationSummary = SettingsDisplayStrings.FormatPluginValidationSummary(_pluginValidationReport);
             PluginValidationIssueSummary = SettingsDisplayStrings.FormatPluginValidationIssueSummary(_pluginValidationReport);
             PluginValidationLastCheckedText = SettingsDisplayStrings.FormatPluginValidationLastChecked(DateTimeOffset.Now);
@@ -348,16 +359,22 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
         catch (OperationCanceledException)
         {
+            _pluginValidationReport = previousReport;
+            PluginValidationEntries = previousEntries;
+            PluginValidationHealth = previousHealth;
+            PluginValidationSummary = previousSummary;
+            PluginValidationIssueSummary = previousIssueSummary;
+            PluginValidationLastCheckedText = previousLastCheckedText;
         }
         catch
         {
             _pluginValidationReport = PluginValidationReport.Empty;
-            PluginValidationEntries = Array.Empty<PluginValidationEntry>();
-            PluginValidationHealth = "Unavailable";
+            PluginValidationEntries = Array.Empty<PluginValidationEntryViewItem>();
+            PluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthUnavailable;
             PluginValidationSummary = SettingsDisplayStrings.PluginValidationUnavailable;
-            PluginValidationIssueSummary =
-                SettingsDisplayStrings.FormatPluginValidationIssueSummary(PluginValidationReport.Empty);
+            PluginValidationIssueSummary = string.Empty;
             PluginValidationLastCheckedText = string.Empty;
+            OnPropertyChanged(nameof(DiagnosticsText));
         }
         finally
         {
@@ -416,10 +433,21 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     private void RefreshPluginValidationEntries()
     {
-        PluginValidationEntries = ShowOnlyPluginValidationIssues
+        var entries = ShowOnlyPluginValidationIssues
             ? _pluginValidationReport.SafeEntries.Where(entry => entry.HasIssues).ToArray()
             : _pluginValidationReport.SafeEntries.ToArray();
+
+        PluginValidationEntries = entries.Select(CreatePluginValidationEntryViewItem).ToArray();
     }
+
+    private static PluginValidationEntryViewItem CreatePluginValidationEntryViewItem(PluginValidationEntry entry) => new(
+        SettingsDisplayStrings.FormatPluginValidationEntryName(entry),
+        entry.Status,
+        SettingsDisplayStrings.FormatPluginValidationTrust(entry.Trusted),
+        entry.ManifestPath,
+        entry.SafeIssues
+            .Select(issue => new PluginValidationIssueViewItem(SettingsDisplayStrings.FormatPluginValidationIssue(issue)))
+            .ToArray());
 
     private static bool IsKeyValid(string? key)
     {
@@ -464,3 +492,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
+
+public sealed record PluginValidationEntryViewItem(
+    string DisplayName,
+    string Status,
+    string TrustSummary,
+    string? ManifestPath,
+    IReadOnlyList<PluginValidationIssueViewItem> Issues);
+
+public sealed record PluginValidationIssueViewItem(string DisplayText);

@@ -78,6 +78,7 @@ public sealed class LauncherVisualStyleTests
         StringAssert.Contains(axaml, "OnValidatePluginsClick");
         StringAssert.Contains(axaml, "ShowOnlyPluginValidationIssues");
         StringAssert.Contains(axaml, "ScrollViewer");
+        StringAssert.Contains(axaml, "AutomationProperties.Name=\"Open plugins folder\"");
 
         Assert.IsFalse(axaml.Contains("CornerRadius=\"12\""), "Settings surfaces should stay at 8px radius or lower.");
         Assert.IsFalse(axaml.Contains("<Setter Property=\"CornerRadius\" Value=\"12\""), "Settings card style should not use a 12px radius.");
@@ -107,21 +108,37 @@ public sealed class LauncherVisualStyleTests
     {
         var viewModel = File.ReadAllText(FindSettingsViewModel());
         var strings = File.ReadAllText(FindSettingsDisplayStrings());
+        var model = File.ReadAllText(FindPluginValidationDiagnosticsModel());
 
         StringAssert.Contains(viewModel, "SettingsDisplayStrings");
         StringAssert.Contains(strings, "UserPluginManifestCountSingularFormat");
         StringAssert.Contains(strings, "DiagnosticsFormat");
         Assert.IsFalse(viewModel.Contains("user manifest{"), "Pluralized user-facing strings should live in SettingsDisplayStrings.");
         Assert.IsFalse(viewModel.Contains("Could not open plugins folder."), "User-facing status strings should live in SettingsDisplayStrings.");
+        Assert.IsFalse(model.Contains("\"Ready\""), "Plugin diagnostics models should expose health codes, not display text.");
+        Assert.IsFalse(model.Contains("\"Trusted\""), "Plugin diagnostics models should not own Settings display labels.");
+        Assert.IsFalse(model.Contains("<unknown plugin>"), "Unknown plugin display text should live in SettingsDisplayStrings.");
+        Assert.IsFalse(model.Contains("DisplayText"), "Formatted issue text should live outside the diagnostics model.");
     }
 
     [TestMethod]
     public void SettingsWindowCode_WhenOpened_RefreshesPluginValidation()
     {
         var code = File.ReadAllText(FindSettingsWindowCodeBehind());
+        var openedBody = ExtractMethodBody(code, "OnOpened");
 
         StringAssert.Contains(code, "Opened += OnOpened");
-        StringAssert.Contains(code, "RefreshPluginValidationAsync");
+        StringAssert.Contains(openedBody, "RefreshPluginValidationAsync");
+    }
+
+    [TestMethod]
+    public void SettingsWindowCode_WhenRefreshingPluginValidation_UsesWindowCancellationToken()
+    {
+        var code = File.ReadAllText(FindSettingsWindowCodeBehind());
+
+        StringAssert.Contains(code, "CancellationTokenSource");
+        StringAssert.Contains(code, "Closed += OnClosed");
+        StringAssert.Contains(code, "_pluginValidationCancellation");
     }
 
     private static string FindMainWindowAxaml() =>
@@ -151,8 +168,39 @@ public sealed class LauncherVisualStyleTests
     private static string FindSettingsDisplayStrings() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "Strings", "SettingsDisplayStrings.cs"));
 
+    private static string FindPluginValidationDiagnosticsModel() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "Models", "PluginValidationDiagnostics.cs"));
+
     private static string FindTokensAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "Themes", "Tokens.axaml"));
+
+    private static string ExtractMethodBody(string code, string methodName)
+    {
+        var methodIndex = code.IndexOf($"void {methodName}", StringComparison.Ordinal);
+        Assert.IsTrue(methodIndex >= 0, $"Could not find {methodName}.");
+        var openBraceIndex = code.IndexOf('{', methodIndex);
+        Assert.IsTrue(openBraceIndex >= 0, $"Could not find body for {methodName}.");
+
+        var depth = 0;
+        for (var index = openBraceIndex; index < code.Length; index++)
+        {
+            if (code[index] == '{')
+            {
+                depth++;
+            }
+            else if (code[index] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return code.Substring(openBraceIndex, index - openBraceIndex + 1);
+                }
+            }
+        }
+
+        Assert.Fail($"Could not parse body for {methodName}.");
+        return string.Empty;
+    }
 
     private static string FindRepoFile(string relativePath)
     {

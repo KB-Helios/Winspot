@@ -24,8 +24,7 @@ public sealed class PluginValidationDiagnosticsTests
         Assert.AreEqual(0, report.RejectedCount);
         Assert.AreEqual(0, report.WarningCount);
         Assert.AreEqual(0, report.ErrorCount);
-        Assert.AreEqual("Ready", report.Health);
-        Assert.AreEqual("2 accepted, 1 disabled, 0 rejected", report.CountSummary);
+        Assert.AreEqual(PluginValidationHealth.Ready, report.Health);
     }
 
     [TestMethod]
@@ -50,17 +49,7 @@ public sealed class PluginValidationDiagnosticsTests
         Assert.AreEqual(1, report.RejectedCount);
         Assert.AreEqual(1, report.WarningCount);
         Assert.AreEqual(1, report.ErrorCount);
-        Assert.AreEqual("Error", report.Health);
+        Assert.AreEqual(PluginValidationHealth.Error, report.Health);
         Assert.AreEqual(2, report.IssueCount);
-    }
-
-    [TestMethod]
-    public void Entry_WhenFieldsMissing_UsesPathOrUnknownLabel()
-    {
-        var pathEntry = new PluginValidationEntry(null, null, "C:\\Plugins\\broken.json", "User", "Rejected", false, Array.Empty<PluginValidationIssue>());
-        var unknownEntry = new PluginValidationEntry(null, null, null, "User", "Rejected", false, Array.Empty<PluginValidationIssue>());
-
-        Assert.AreEqual("broken.json", pathEntry.DisplayName);
-        Assert.AreEqual("<unknown plugin>", unknownEntry.DisplayName);
     }
 }

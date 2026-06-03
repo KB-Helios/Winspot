@@ -1,5 +1,12 @@
 namespace Winspot_App.Models;
 
+public enum PluginValidationHealth
+{
+    Ready,
+    Warning,
+    Error,
+}
+
 public sealed record PluginValidationReport(IReadOnlyList<PluginValidationEntry>? Entries)
 {
     public static PluginValidationReport Empty { get; } = new(Array.Empty<PluginValidationEntry>());
@@ -18,13 +25,11 @@ public sealed record PluginValidationReport(IReadOnlyList<PluginValidationEntry>
 
     public int IssueCount => WarningCount + ErrorCount;
 
-    public string Health => ErrorCount > 0
-        ? "Error"
+    public PluginValidationHealth Health => ErrorCount > 0
+        ? PluginValidationHealth.Error
         : WarningCount > 0
-            ? "Warning"
-            : "Ready";
-
-    public string CountSummary => $"{AcceptedCount} accepted, {DisabledCount} disabled, {RejectedCount} rejected";
+            ? PluginValidationHealth.Warning
+            : PluginValidationHealth.Ready;
 
     private static bool IsStatus(PluginValidationEntry entry, string status) =>
         string.Equals(entry.Status, status, StringComparison.OrdinalIgnoreCase);
@@ -45,38 +50,10 @@ public sealed record PluginValidationEntry(
     public IReadOnlyList<PluginValidationIssue> SafeIssues => Issues ?? Array.Empty<PluginValidationIssue>();
 
     public bool HasIssues => SafeIssues.Count > 0;
-
-    public string DisplayName
-    {
-        get
-        {
-            if (!string.IsNullOrWhiteSpace(Name))
-            {
-                return Name;
-            }
-
-            if (!string.IsNullOrWhiteSpace(Id))
-            {
-                return Id;
-            }
-
-            if (!string.IsNullOrWhiteSpace(ManifestPath))
-            {
-                return Path.GetFileName(ManifestPath);
-            }
-
-            return "<unknown plugin>";
-        }
-    }
-
-    public string TrustSummary => Trusted ? "Trusted" : "Search-only";
 }
 
 public sealed record PluginValidationIssue(
     string Severity,
     string Stage,
     string Code,
-    string Message)
-{
-    public string DisplayText => $"[{Severity} {Stage} {Code}] {Message}";
-}
+    string Message);

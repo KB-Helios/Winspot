@@ -263,6 +263,7 @@ public sealed class SettingsViewModelTests
 
         Assert.AreEqual("Unchecked", viewModel.PluginValidationHealth);
         Assert.AreEqual("Plugin validation not checked.", viewModel.PluginValidationSummary);
+        Assert.AreEqual(string.Empty, viewModel.PluginValidationIssueSummary);
     }
 
     [TestMethod]
@@ -305,6 +306,9 @@ public sealed class SettingsViewModelTests
         StringAssert.Contains(viewModel.PluginValidationSummary, "0 accepted");
         StringAssert.Contains(viewModel.PluginValidationIssueSummary, "1 error");
         Assert.AreEqual(1, viewModel.PluginValidationEntries.Count);
+        Assert.AreEqual("Bad", viewModel.PluginValidationEntries[0].DisplayName);
+        Assert.AreEqual("Search-only", viewModel.PluginValidationEntries[0].TrustSummary);
+        Assert.AreEqual("[Error Manifest invalid_manifest] plugin id is invalid", viewModel.PluginValidationEntries[0].Issues[0].DisplayText);
         Assert.IsFalse(viewModel.IsPluginValidationRunning);
     }
 
@@ -321,7 +325,105 @@ public sealed class SettingsViewModelTests
 
         Assert.AreEqual("Unavailable", viewModel.PluginValidationHealth);
         StringAssert.Contains(viewModel.PluginValidationSummary, "Plugin validation unavailable");
+        Assert.AreEqual(string.Empty, viewModel.PluginValidationIssueSummary);
         Assert.IsFalse(viewModel.IsPluginValidationRunning);
+    }
+
+    [TestMethod]
+    public async Task RefreshPluginValidationAsync_WhenAlreadyRunning_DoesNotStartSecondRequest()
+    {
+        var completion = new TaskCompletionSource<PluginValidationReport>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new RecordingIpcClient
+        {
+            PluginReportTask = completion.Task,
+        };
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), "C:\\Plugins", client);
+
+        var firstRefresh = viewModel.RefreshPluginValidationAsync(CancellationToken.None);
+        await WaitUntilAsync(() => viewModel.IsPluginValidationRunning);
+
+        await viewModel.RefreshPluginValidationAsync(CancellationToken.None);
+
+        Assert.AreEqual(1, client.PluginDiagnosticsCallCount);
+        completion.SetResult(PluginValidationReport.Empty);
+        await firstRefresh;
+    }
+
+    [TestMethod]
+    public async Task RefreshPluginValidationAsync_WhenCanceledBeforeFirstReport_RestoresUncheckedState()
+    {
+        var client = new RecordingIpcClient
+        {
+            PluginDiagnosticsException = new OperationCanceledException(),
+        };
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), "C:\\Plugins", client);
+
+        await viewModel.RefreshPluginValidationAsync(CancellationToken.None);
+
+        Assert.AreEqual("Unchecked", viewModel.PluginValidationHealth);
+        Assert.AreEqual("Plugin validation not checked.", viewModel.PluginValidationSummary);
+        Assert.AreEqual(string.Empty, viewModel.PluginValidationIssueSummary);
+        Assert.AreEqual(string.Empty, viewModel.PluginValidationLastCheckedText);
+        Assert.IsFalse(viewModel.IsPluginValidationRunning);
+    }
+
+    [TestMethod]
+    public async Task RefreshPluginValidationAsync_WhenCanceledAfterReport_RestoresPreviousState()
+    {
+        var client = new RecordingIpcClient
+        {
+            PluginReport = new PluginValidationReport(new[]
+            {
+                new PluginValidationEntry(
+                    "warn",
+                    "Warn",
+                    "C:\\Plugins\\warn.json",
+                    "User",
+                    "Accepted",
+                    true,
+                    new[] { new PluginValidationIssue("Warning", "Policy", "ignored", "capability ignored") }),
+            }),
+        };
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), "C:\\Plugins", client);
+        await viewModel.RefreshPluginValidationAsync(CancellationToken.None);
+        var previousSummary = viewModel.PluginValidationSummary;
+        var previousIssueSummary = viewModel.PluginValidationIssueSummary;
+        var previousLastChecked = viewModel.PluginValidationLastCheckedText;
+
+        client.PluginDiagnosticsException = new OperationCanceledException();
+
+        await viewModel.RefreshPluginValidationAsync(CancellationToken.None);
+
+        Assert.AreEqual("Warning", viewModel.PluginValidationHealth);
+        Assert.AreEqual(previousSummary, viewModel.PluginValidationSummary);
+        Assert.AreEqual(previousIssueSummary, viewModel.PluginValidationIssueSummary);
+        Assert.AreEqual(previousLastChecked, viewModel.PluginValidationLastCheckedText);
+        Assert.AreEqual(1, viewModel.PluginValidationEntries.Count);
+    }
+
+    [TestMethod]
+    public async Task RefreshPluginValidationAsync_WhenManifestPathIsMalformed_UsesRawPathAsDisplayName()
+    {
+        var malformedPath = "C:\\Plugins\\\0bad.json";
+        var client = new RecordingIpcClient
+        {
+            PluginReport = new PluginValidationReport(new[]
+            {
+                new PluginValidationEntry(
+                    null,
+                    null,
+                    malformedPath,
+                    "User",
+                    "Rejected",
+                    false,
+                    new[] { new PluginValidationIssue("Error", "Manifest", "invalid_manifest", "plugin id is invalid") }),
+            }),
+        };
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), "C:\\Plugins", client);
+
+        await viewModel.RefreshPluginValidationAsync(CancellationToken.None);
+
+        Assert.AreEqual(Path.GetFileName(malformedPath), viewModel.PluginValidationEntries[0].DisplayName);
     }
 
     private sealed class RecordingIpcClient : IWinspotIpcClient
@@ -332,7 +434,11 @@ public sealed class SettingsViewModelTests
 
         public PluginValidationReport PluginReport { get; init; } = PluginValidationReport.Empty;
 
-        public Exception? PluginDiagnosticsException { get; init; }
+        public Task<PluginValidationReport>? PluginReportTask { get; init; }
+
+        public Exception? PluginDiagnosticsException { get; set; }
+
+        public int PluginDiagnosticsCallCount { get; private set; }
 
         public Task<IReadOnlyList<SearchResultItem>> SearchAsync(string query, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SearchResultItem>>(Array.Empty<SearchResultItem>());
@@ -347,9 +453,26 @@ public sealed class SettingsViewModelTests
         public Task<PreviewItem?> GetPreviewAsync(SearchResultItem result, CancellationToken cancellationToken) =>
             Task.FromResult<PreviewItem?>(null);
 
-        public Task<PluginValidationReport> GetPluginDiagnosticsAsync(CancellationToken cancellationToken) =>
-            PluginDiagnosticsException is not null
-                ? Task.FromException<PluginValidationReport>(PluginDiagnosticsException)
+        public Task<PluginValidationReport> GetPluginDiagnosticsAsync(CancellationToken cancellationToken)
+        {
+            PluginDiagnosticsCallCount++;
+            if (PluginDiagnosticsException is not null)
+            {
+                return Task.FromException<PluginValidationReport>(PluginDiagnosticsException);
+            }
+
+            return PluginReportTask is not null
+                ? PluginReportTask.WaitAsync(cancellationToken)
                 : Task.FromResult(PluginReport);
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!condition())
+        {
+            await Task.Delay(10, timeout.Token);
+        }
     }
 }

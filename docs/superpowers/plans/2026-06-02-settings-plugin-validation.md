@@ -88,8 +88,7 @@ public sealed class PluginValidationDiagnosticsTests
         Assert.AreEqual(0, report.RejectedCount);
         Assert.AreEqual(0, report.WarningCount);
         Assert.AreEqual(0, report.ErrorCount);
-        Assert.AreEqual("Ready", report.Health);
-        Assert.AreEqual("2 accepted, 1 disabled, 0 rejected", report.CountSummary);
+        Assert.AreEqual(PluginValidationHealth.Ready, report.Health);
     }
 
     [TestMethod]
@@ -114,18 +113,8 @@ public sealed class PluginValidationDiagnosticsTests
         Assert.AreEqual(1, report.RejectedCount);
         Assert.AreEqual(1, report.WarningCount);
         Assert.AreEqual(1, report.ErrorCount);
-        Assert.AreEqual("Error", report.Health);
+        Assert.AreEqual(PluginValidationHealth.Error, report.Health);
         Assert.AreEqual(2, report.IssueCount);
-    }
-
-    [TestMethod]
-    public void Entry_WhenFieldsMissing_UsesPathOrUnknownLabel()
-    {
-        var pathEntry = new PluginValidationEntry(null, null, "C:\\Plugins\\broken.json", "User", "Rejected", false, Array.Empty<PluginValidationIssue>());
-        var unknownEntry = new PluginValidationEntry(null, null, null, "User", "Rejected", false, Array.Empty<PluginValidationIssue>());
-
-        Assert.AreEqual("broken.json", pathEntry.DisplayName);
-        Assert.AreEqual("<unknown plugin>", unknownEntry.DisplayName);
     }
 }
 ```
@@ -145,6 +134,13 @@ Expected: fail because `PluginValidationReport`, `PluginValidationEntry`, and `P
 ```csharp
 namespace Winspot_App.Models;
 
+public enum PluginValidationHealth
+{
+    Ready,
+    Warning,
+    Error,
+}
+
 public sealed record PluginValidationReport(IReadOnlyList<PluginValidationEntry>? Entries)
 {
     public static PluginValidationReport Empty { get; } = new(Array.Empty<PluginValidationEntry>());
@@ -163,13 +159,11 @@ public sealed record PluginValidationReport(IReadOnlyList<PluginValidationEntry>
 
     public int IssueCount => WarningCount + ErrorCount;
 
-    public string Health => ErrorCount > 0
-        ? "Error"
+    public PluginValidationHealth Health => ErrorCount > 0
+        ? PluginValidationHealth.Error
         : WarningCount > 0
-            ? "Warning"
-            : "Ready";
-
-    public string CountSummary => $"{AcceptedCount} accepted, {DisabledCount} disabled, {RejectedCount} rejected";
+            ? PluginValidationHealth.Warning
+            : PluginValidationHealth.Ready;
 
     private static bool IsStatus(PluginValidationEntry entry, string status) =>
         string.Equals(entry.Status, status, StringComparison.OrdinalIgnoreCase);
@@ -190,41 +184,13 @@ public sealed record PluginValidationEntry(
     public IReadOnlyList<PluginValidationIssue> SafeIssues => Issues ?? Array.Empty<PluginValidationIssue>();
 
     public bool HasIssues => SafeIssues.Count > 0;
-
-    public string DisplayName
-    {
-        get
-        {
-            if (!string.IsNullOrWhiteSpace(Name))
-            {
-                return Name;
-            }
-
-            if (!string.IsNullOrWhiteSpace(Id))
-            {
-                return Id;
-            }
-
-            if (!string.IsNullOrWhiteSpace(ManifestPath))
-            {
-                return Path.GetFileName(ManifestPath);
-            }
-
-            return "<unknown plugin>";
-        }
-    }
-
-    public string TrustSummary => Trusted ? "Trusted" : "Search-only";
 }
 
 public sealed record PluginValidationIssue(
     string Severity,
     string Stage,
     string Code,
-    string Message)
-{
-    public string DisplayText => $"[{Severity} {Stage} {Code}] {Message}";
-}
+    string Message);
 ```
 
 - [ ] **Step 4: Run the model tests to verify they pass**
@@ -586,8 +552,19 @@ public const string PluginValidationNotChecked = "Plugin validation not checked.
 public const string PluginValidationChecking = "Checking plugin manifests.";
 public const string PluginValidationUnavailable = "Plugin validation unavailable.";
 public const string PluginValidationReadyFormat = "{0}. {1}";
+public const string PluginValidationCountSummaryFormat = "{0} accepted, {1} disabled, {2} rejected";
 public const string PluginValidationIssueSummaryFormat = "{0} warning(s), {1} error(s)";
 public const string PluginValidationLastCheckedFormat = "Last checked {0:t}";
+public const string PluginValidationHealthUnchecked = "Unchecked";
+public const string PluginValidationHealthChecking = "Checking";
+public const string PluginValidationHealthUnavailable = "Unavailable";
+public const string PluginValidationHealthReady = "Ready";
+public const string PluginValidationHealthWarning = "Warning";
+public const string PluginValidationHealthError = "Error";
+public const string PluginValidationUnknownPlugin = "<unknown plugin>";
+public const string PluginValidationTrusted = "Trusted";
+public const string PluginValidationSearchOnly = "Search-only";
+public const string PluginValidationIssueDisplayFormat = "[{0} {1} {2}] {3}";
 ```
 
 Add helpers:
@@ -596,8 +573,22 @@ Add helpers:
 public static string FormatPluginValidationSummary(PluginValidationReport report) => string.Format(
     CultureInfo.InvariantCulture,
     PluginValidationReadyFormat,
-    report.Health,
-    report.CountSummary);
+    FormatPluginValidationHealth(report.Health),
+    FormatPluginValidationCountSummary(report));
+
+public static string FormatPluginValidationHealth(PluginValidationHealth health) => health switch
+{
+    PluginValidationHealth.Error => PluginValidationHealthError,
+    PluginValidationHealth.Warning => PluginValidationHealthWarning,
+    _ => PluginValidationHealthReady,
+};
+
+public static string FormatPluginValidationCountSummary(PluginValidationReport report) => string.Format(
+    CultureInfo.InvariantCulture,
+    PluginValidationCountSummaryFormat,
+    report.AcceptedCount,
+    report.DisabledCount,
+    report.RejectedCount);
 
 public static string FormatPluginValidationIssueSummary(PluginValidationReport report) => string.Format(
     CultureInfo.InvariantCulture,
@@ -642,10 +633,10 @@ Add fields:
 ```csharp
 private bool _isPluginValidationRunning;
 private PluginValidationReport _pluginValidationReport = PluginValidationReport.Empty;
-private IReadOnlyList<PluginValidationEntry> _pluginValidationEntries = Array.Empty<PluginValidationEntry>();
+private IReadOnlyList<PluginValidationEntryViewItem> _pluginValidationEntries = Array.Empty<PluginValidationEntryViewItem>();
 private string _pluginValidationSummary = SettingsDisplayStrings.PluginValidationNotChecked;
-private string _pluginValidationIssueSummary = SettingsDisplayStrings.FormatPluginValidationIssueSummary(PluginValidationReport.Empty);
-private string _pluginValidationHealth = "Unchecked";
+private string _pluginValidationIssueSummary = string.Empty;
+private string _pluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthUnchecked;
 private string _pluginValidationLastCheckedText = string.Empty;
 private bool _showOnlyPluginValidationIssues = true;
 ```
@@ -695,7 +686,7 @@ public bool ShowOnlyPluginValidationIssues
     }
 }
 
-public IReadOnlyList<PluginValidationEntry> PluginValidationEntries
+public IReadOnlyList<PluginValidationEntryViewItem> PluginValidationEntries
 {
     get => _pluginValidationEntries;
     private set => SetField(ref _pluginValidationEntries, value);
@@ -707,14 +698,26 @@ Add methods:
 ```csharp
 public async Task RefreshPluginValidationAsync(CancellationToken cancellationToken)
 {
+    if (IsPluginValidationRunning)
+    {
+        return;
+    }
+
+    var previousReport = _pluginValidationReport;
+    var previousEntries = PluginValidationEntries;
+    var previousHealth = PluginValidationHealth;
+    var previousSummary = PluginValidationSummary;
+    var previousIssueSummary = PluginValidationIssueSummary;
+    var previousLastCheckedText = PluginValidationLastCheckedText;
+
     IsPluginValidationRunning = true;
     PluginValidationSummary = SettingsDisplayStrings.PluginValidationChecking;
-    PluginValidationHealth = "Checking";
+    PluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthChecking;
 
     try
     {
         _pluginValidationReport = await _ipcClient.GetPluginDiagnosticsAsync(cancellationToken).ConfigureAwait(true);
-        PluginValidationHealth = _pluginValidationReport.Health;
+        PluginValidationHealth = SettingsDisplayStrings.FormatPluginValidationHealth(_pluginValidationReport.Health);
         PluginValidationSummary = SettingsDisplayStrings.FormatPluginValidationSummary(_pluginValidationReport);
         PluginValidationIssueSummary = SettingsDisplayStrings.FormatPluginValidationIssueSummary(_pluginValidationReport);
         PluginValidationLastCheckedText = SettingsDisplayStrings.FormatPluginValidationLastChecked(DateTimeOffset.Now);
@@ -723,15 +726,22 @@ public async Task RefreshPluginValidationAsync(CancellationToken cancellationTok
     }
     catch (OperationCanceledException)
     {
+        _pluginValidationReport = previousReport;
+        PluginValidationEntries = previousEntries;
+        PluginValidationHealth = previousHealth;
+        PluginValidationSummary = previousSummary;
+        PluginValidationIssueSummary = previousIssueSummary;
+        PluginValidationLastCheckedText = previousLastCheckedText;
     }
     catch
     {
         _pluginValidationReport = PluginValidationReport.Empty;
-        PluginValidationEntries = Array.Empty<PluginValidationEntry>();
-        PluginValidationHealth = "Unavailable";
+        PluginValidationEntries = Array.Empty<PluginValidationEntryViewItem>();
+        PluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthUnavailable;
         PluginValidationSummary = SettingsDisplayStrings.PluginValidationUnavailable;
-        PluginValidationIssueSummary = SettingsDisplayStrings.FormatPluginValidationIssueSummary(PluginValidationReport.Empty);
+        PluginValidationIssueSummary = string.Empty;
         PluginValidationLastCheckedText = string.Empty;
+        OnPropertyChanged(nameof(DiagnosticsText));
     }
     finally
     {
@@ -741,10 +751,30 @@ public async Task RefreshPluginValidationAsync(CancellationToken cancellationTok
 
 private void RefreshPluginValidationEntries()
 {
-    PluginValidationEntries = ShowOnlyPluginValidationIssues
+    var entries = ShowOnlyPluginValidationIssues
         ? _pluginValidationReport.SafeEntries.Where(entry => entry.HasIssues).ToArray()
         : _pluginValidationReport.SafeEntries.ToArray();
+
+    PluginValidationEntries = entries.Select(CreatePluginValidationEntryViewItem).ToArray();
 }
+
+private static PluginValidationEntryViewItem CreatePluginValidationEntryViewItem(PluginValidationEntry entry) => new(
+    SettingsDisplayStrings.FormatPluginValidationEntryName(entry),
+    entry.Status,
+    SettingsDisplayStrings.FormatPluginValidationTrust(entry.Trusted),
+    entry.ManifestPath,
+    entry.SafeIssues
+        .Select(issue => new PluginValidationIssueViewItem(SettingsDisplayStrings.FormatPluginValidationIssue(issue)))
+        .ToArray());
+
+public sealed record PluginValidationEntryViewItem(
+    string DisplayName,
+    string Status,
+    string TrustSummary,
+    string? ManifestPath,
+    IReadOnlyList<PluginValidationIssueViewItem> Issues);
+
+public sealed record PluginValidationIssueViewItem(string DisplayText);
 ```
 
 - [ ] **Step 5: Run the ViewModel tests**
@@ -790,10 +820,10 @@ Expected: fail until the AXAML is updated.
 
 - [ ] **Step 3: Update the Plugins tab layout**
 
-Add the model namespace to the root `Window` element:
+Use the existing ViewModel namespace on the root `Window` element:
 
 ```xml
-xmlns:models="using:Winspot_App.Models"
+xmlns:vm="using:Winspot_App.ViewModels"
 ```
 
 Replace the current `Plugins` tab content with this structure, preserving the existing panel style and 8px radius:
@@ -819,6 +849,7 @@ Replace the current `Plugins` tab content with this structure, preserving the ex
                             MinWidth="92" />
                         <Button
                             Grid.Column="2"
+                            AutomationProperties.Name="Open plugins folder"
                             Classes="icon-button"
                             Click="OnOpenPluginsFolderClick"
                             ToolTip.Tip="Open folder">
@@ -869,7 +900,7 @@ Replace the current `Plugins` tab content with this structure, preserving the ex
 
             <ItemsControl ItemsSource="{Binding PluginValidationEntries}">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="models:PluginValidationEntry" x:DataType="models:PluginValidationEntry">
+                    <DataTemplate DataType="vm:PluginValidationEntryViewItem" x:DataType="vm:PluginValidationEntryViewItem">
                         <Border Classes="panel" Margin="0,0,0,8">
                             <StackPanel Spacing="6">
                                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
@@ -878,9 +909,9 @@ Replace the current `Plugins` tab content with this structure, preserving the ex
                                     <TextBlock Grid.Column="2" Classes="hint" Text="{Binding TrustSummary}" />
                                 </Grid>
                                 <TextBlock Classes="hint" Text="{Binding ManifestPath}" TextTrimming="CharacterEllipsis" />
-                                <ItemsControl ItemsSource="{Binding SafeIssues}">
+                                <ItemsControl ItemsSource="{Binding Issues}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="models:PluginValidationIssue" x:DataType="models:PluginValidationIssue">
+                                        <DataTemplate DataType="vm:PluginValidationIssueViewItem" x:DataType="vm:PluginValidationIssueViewItem">
                                             <TextBlock
                                                 Classes="hint"
                                                 Text="{Binding DisplayText}"
@@ -903,9 +934,36 @@ Replace the current `Plugins` tab content with this structure, preserving the ex
 In `SettingsWindow.axaml.cs`:
 
 ```csharp
+private CancellationTokenSource? _pluginValidationCancellation;
+
 private async void OnValidatePluginsClick(object? sender, RoutedEventArgs e)
 {
-    await ViewModel.RefreshPluginValidationAsync(CancellationToken.None);
+    await RefreshPluginValidationAsync();
+}
+
+private async Task RefreshPluginValidationAsync()
+{
+    var cancellation = ResetPluginValidationCancellation();
+    try
+    {
+        await ViewModel.RefreshPluginValidationAsync(cancellation.Token);
+    }
+    catch (OperationCanceledException)
+    {
+    }
+    catch (Exception exception)
+    {
+        Debug.WriteLine($"Refreshing plugin validation failed: {exception}");
+    }
+}
+
+private CancellationTokenSource ResetPluginValidationCancellation()
+{
+    var previous = _pluginValidationCancellation;
+    previous?.Cancel();
+    _pluginValidationCancellation = new CancellationTokenSource();
+    previous?.Dispose();
+    return _pluginValidationCancellation;
 }
 ```
 
@@ -946,6 +1004,7 @@ In the `SettingsWindow` constructor after `InitializeComponent()`:
 
 ```csharp
 Opened += OnOpened;
+Closed += OnClosed;
 ```
 
 Add:
@@ -953,7 +1012,14 @@ Add:
 ```csharp
 private async void OnOpened(object? sender, EventArgs e)
 {
-    await ViewModel.RefreshPluginValidationAsync(CancellationToken.None);
+    await RefreshPluginValidationAsync();
+}
+
+private void OnClosed(object? sender, EventArgs e)
+{
+    _pluginValidationCancellation?.Cancel();
+    _pluginValidationCancellation?.Dispose();
+    _pluginValidationCancellation = null;
 }
 ```
 
