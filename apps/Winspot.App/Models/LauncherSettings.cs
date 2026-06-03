@@ -41,6 +41,10 @@ public sealed class LauncherSettings
     /// `fastFlowLm` object from settings.json and does not start FLM unless the
     /// user executes an AI result.
     public FastFlowLmSettings FastFlowLm { get; init; } = new();
+
+    /// Windows Capture integration. The daemon reads this same `capture`
+    /// object and saves capture artifacts to the configured output directory.
+    public CaptureSettings Capture { get; init; } = new();
 }
 
 public sealed class FastFlowLmSettings
@@ -60,4 +64,19 @@ public sealed class FastFlowLmSettings
     public int MaxFileBytes { get; init; } = 1024 * 1024;
 
     public int MaxContextBytes { get; init; } = 4 * 1024 * 1024;
+}
+
+public sealed class CaptureSettings
+{
+    public bool Enabled { get; init; } = true;
+
+    public string OutputDirectory { get; init; } = string.Empty;
+
+    public int DefaultRecordSeconds { get; init; } = 8;
+
+    public int MaxRecordSeconds { get; init; } = 60;
+
+    public bool IncludeCursor { get; init; } = true;
+
+    public int PreCaptureDelayMs { get; init; } = 250;
 }

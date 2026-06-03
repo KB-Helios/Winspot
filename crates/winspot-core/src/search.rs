@@ -36,6 +36,7 @@ pub enum ActionCapability {
     ProcessInspection,
     ShellExecution,
     PluginExecution,
+    ScreenCapture,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

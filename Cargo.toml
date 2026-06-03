@@ -4,6 +4,7 @@ members = [
     "crates/winspot-actions",
     "crates/winspot-core",
     "crates/winspot-daemon",
+    "crates/winspot-capture",
     "crates/winspot-fastflowlm",
     "crates/winspot-index",
     "crates/winspot-pluginctl",
@@ -21,11 +22,13 @@ license = "MIT"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+windows-capture = "2.0.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 winspot-actions = { path = "crates/winspot-actions" }
 winspot-core = { path = "crates/winspot-core" }
+winspot-capture = { path = "crates/winspot-capture" }
 winspot-fastflowlm = { path = "crates/winspot-fastflowlm" }
 winspot-index = { path = "crates/winspot-index" }
 winspot-plugins = { path = "crates/winspot-plugins" }

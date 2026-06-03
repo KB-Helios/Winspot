@@ -49,6 +49,12 @@ public sealed class LauncherSettingsStoreTests
         Assert.AreEqual(5, settings.FastFlowLm.MaxContextFiles);
         Assert.AreEqual(1024 * 1024, settings.FastFlowLm.MaxFileBytes);
         Assert.AreEqual(4 * 1024 * 1024, settings.FastFlowLm.MaxContextBytes);
+        Assert.IsTrue(settings.Capture.Enabled);
+        Assert.AreEqual(string.Empty, settings.Capture.OutputDirectory);
+        Assert.AreEqual(8, settings.Capture.DefaultRecordSeconds);
+        Assert.AreEqual(60, settings.Capture.MaxRecordSeconds);
+        Assert.IsTrue(settings.Capture.IncludeCursor);
+        Assert.AreEqual(250, settings.Capture.PreCaptureDelayMs);
         Assert.IsTrue(File.Exists(_settingsPath));
     }
 
@@ -75,6 +81,15 @@ public sealed class LauncherSettingsStoreTests
                 MaxFileBytes = 123,
                 MaxContextBytes = 456,
             },
+            Capture = new CaptureSettings
+            {
+                Enabled = false,
+                OutputDirectory = @"C:\Captures",
+                DefaultRecordSeconds = 5,
+                MaxRecordSeconds = 20,
+                IncludeCursor = false,
+                PreCaptureDelayMs = 750,
+            },
         });
 
         var reloaded = store.Load();
@@ -94,6 +109,45 @@ public sealed class LauncherSettingsStoreTests
         Assert.AreEqual(3, reloaded.FastFlowLm.MaxContextFiles);
         Assert.AreEqual(123, reloaded.FastFlowLm.MaxFileBytes);
         Assert.AreEqual(456, reloaded.FastFlowLm.MaxContextBytes);
+        Assert.IsFalse(reloaded.Capture.Enabled);
+        Assert.AreEqual(@"C:\Captures", reloaded.Capture.OutputDirectory);
+        Assert.AreEqual(5, reloaded.Capture.DefaultRecordSeconds);
+        Assert.AreEqual(20, reloaded.Capture.MaxRecordSeconds);
+        Assert.IsFalse(reloaded.Capture.IncludeCursor);
+        Assert.AreEqual(750, reloaded.Capture.PreCaptureDelayMs);
+    }
+
+    [TestMethod]
+    public void Load_WithMalformedCaptureSettings_NormalizesToSafeDefaults()
+    {
+        File.WriteAllText(
+            _settingsPath,
+            """
+            {
+              "hotkey": {
+                "key": "K",
+                "modifiers": ["Control", "Shift"]
+              },
+              "capture": {
+                "enabled": true,
+                "outputDirectory": " C:\\Captures ",
+                "defaultRecordSeconds": 120,
+                "maxRecordSeconds": 0,
+                "includeCursor": false,
+                "preCaptureDelayMs": 10000
+              }
+            }
+            """);
+        var store = new LauncherSettingsStore(_settingsPath);
+
+        var reloaded = store.Load();
+
+        Assert.IsTrue(reloaded.Capture.Enabled);
+        Assert.AreEqual(@"C:\Captures", reloaded.Capture.OutputDirectory);
+        Assert.AreEqual(60, reloaded.Capture.DefaultRecordSeconds);
+        Assert.AreEqual(60, reloaded.Capture.MaxRecordSeconds);
+        Assert.IsFalse(reloaded.Capture.IncludeCursor);
+        Assert.AreEqual(5000, reloaded.Capture.PreCaptureDelayMs);
     }
 
     [TestMethod]

@@ -201,7 +201,13 @@ public sealed partial class MainWindow : Window
         }
 
         e.Handled = true;
-        if (await ViewModel.AcceptSelectionAsync())
+        var hideBeforeExecution = ShouldHideBeforeExecutingResult(ViewModel.SelectedResult);
+        if (hideBeforeExecution)
+        {
+            Hide();
+        }
+
+        if (await ViewModel.AcceptSelectionAsync() && !hideBeforeExecution)
         {
             Hide();
         }
@@ -227,6 +233,10 @@ public sealed partial class MainWindow : Window
         key is Key.Left or Key.Right && focusedActionIndex >= 0;
 
     public static bool ShouldHideForHotkey(bool isVisible, bool isActive) => isVisible;
+
+    public static bool ShouldHideBeforeExecutingResult(SearchResultItem? result) =>
+        result?.Id.StartsWith("plugin:windows-capture:", StringComparison.Ordinal) == true
+        || string.Equals(result?.Source, "windows-capture", StringComparison.OrdinalIgnoreCase);
 
     private void ApplyResponsiveBounds()
     {

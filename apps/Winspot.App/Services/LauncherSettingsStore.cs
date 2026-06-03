@@ -117,6 +117,7 @@ public sealed class LauncherSettingsStore
         ThemeMode = settings.ThemeMode,
         MotionProfile = settings.MotionProfile,
         FastFlowLm = NormalizeFastFlowLm(settings.FastFlowLm),
+        Capture = NormalizeCapture(settings.Capture),
     };
 
     /// <summary>
@@ -136,6 +137,7 @@ public sealed class LauncherSettingsStore
             ThemeMode = settings.ThemeMode,
             MotionProfile = motionProfile,
             FastFlowLm = NormalizeFastFlowLm(settings.FastFlowLm),
+            Capture = NormalizeCapture(settings.Capture),
         };
     }
 
@@ -165,6 +167,7 @@ public sealed class LauncherSettingsStore
                 ThemeMode = ReadEnum(root, "themeMode", defaults.ThemeMode),
                 MotionProfile = ReadEnum(root, "motionProfile", defaults.MotionProfile),
                 FastFlowLm = ReadFastFlowLm(root, defaults.FastFlowLm),
+                Capture = ReadCapture(root, defaults.Capture),
             };
 
             return NormalizeSettings(recovered);
@@ -257,6 +260,34 @@ public sealed class LauncherSettingsStore
         };
     }
 
+    private static CaptureSettings NormalizeCapture(CaptureSettings? settings)
+    {
+        var defaults = new CaptureSettings();
+        if (settings is null)
+        {
+            return defaults;
+        }
+
+        var maxRecordSeconds = settings.MaxRecordSeconds <= 0
+            ? defaults.MaxRecordSeconds
+            : Math.Clamp(settings.MaxRecordSeconds, 1, 300);
+        var defaultRecordSeconds = settings.DefaultRecordSeconds <= 0
+            ? defaults.DefaultRecordSeconds
+            : settings.DefaultRecordSeconds;
+
+        return new CaptureSettings
+        {
+            Enabled = settings.Enabled,
+            OutputDirectory = string.IsNullOrWhiteSpace(settings.OutputDirectory)
+                ? string.Empty
+                : settings.OutputDirectory.Trim(),
+            DefaultRecordSeconds = Math.Clamp(defaultRecordSeconds, 1, maxRecordSeconds),
+            MaxRecordSeconds = maxRecordSeconds,
+            IncludeCursor = settings.IncludeCursor,
+            PreCaptureDelayMs = Math.Clamp(settings.PreCaptureDelayMs, 0, 5000),
+        };
+    }
+
     /// <summary>
     /// Extracts the "fastFlowLm" object from a JSON element and returns a normalized FastFlowLmSettings instance.
     /// </summary>
@@ -280,6 +311,24 @@ public sealed class LauncherSettingsStore
             MaxContextFiles = ReadInteger(settings, "maxContextFiles", fallback.MaxContextFiles),
             MaxFileBytes = ReadInteger(settings, "maxFileBytes", fallback.MaxFileBytes),
             MaxContextBytes = ReadInteger(settings, "maxContextBytes", fallback.MaxContextBytes),
+        });
+    }
+
+    private static CaptureSettings ReadCapture(JsonElement root, CaptureSettings fallback)
+    {
+        if (!root.TryGetProperty("capture", out var settings) || settings.ValueKind != JsonValueKind.Object)
+        {
+            return fallback;
+        }
+
+        return NormalizeCapture(new CaptureSettings
+        {
+            Enabled = ReadBoolean(settings, "enabled", fallback.Enabled),
+            OutputDirectory = ReadString(settings, "outputDirectory", fallback.OutputDirectory),
+            DefaultRecordSeconds = ReadInteger(settings, "defaultRecordSeconds", fallback.DefaultRecordSeconds),
+            MaxRecordSeconds = ReadInteger(settings, "maxRecordSeconds", fallback.MaxRecordSeconds),
+            IncludeCursor = ReadBoolean(settings, "includeCursor", fallback.IncludeCursor),
+            PreCaptureDelayMs = ReadInteger(settings, "preCaptureDelayMs", fallback.PreCaptureDelayMs),
         });
     }
 

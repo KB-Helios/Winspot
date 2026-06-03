@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using Winspot_App;
+using Winspot_App.Models;
 
 namespace Winspot_App.Tests;
 
@@ -27,5 +28,30 @@ public sealed class MainWindowKeyboardTests
     public void ShouldHideForHotkey_WhenVisibleButNotActive_StillClosesLauncher()
     {
         Assert.IsTrue(MainWindow.ShouldHideForHotkey(isVisible: true, isActive: false));
+    }
+
+    [TestMethod]
+    public void ShouldHideBeforeExecutingResult_OnlyPreHidesCaptureActions()
+    {
+        var capture = new SearchResultItem(
+            "plugin:windows-capture:screenshot:monitor:primary",
+            "Screenshot primary monitor",
+            "Save a PNG capture",
+            "Plugin",
+            1,
+            "PluginCommand",
+            Source: "windows-capture");
+        var fastFlowLm = new SearchResultItem(
+            "plugin:fastflowlm",
+            "Ask FastFlowLM",
+            "Answer in preview",
+            "Plugin",
+            1,
+            "PluginCommand",
+            Source: "fastflowlm");
+
+        Assert.IsTrue(MainWindow.ShouldHideBeforeExecutingResult(capture));
+        Assert.IsFalse(MainWindow.ShouldHideBeforeExecutingResult(fastFlowLm));
+        Assert.IsFalse(MainWindow.ShouldHideBeforeExecutingResult(null));
     }
 }

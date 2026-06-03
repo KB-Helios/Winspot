@@ -35,6 +35,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private string _fastFlowLmMaxContextFiles = "5";
     private string _fastFlowLmMaxFileBytes = (1024 * 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private string _fastFlowLmMaxContextBytes = (4 * 1024 * 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private bool _captureEnabled = true;
+    private string _captureOutputDirectory = string.Empty;
+    private string _captureDefaultRecordSeconds = "8";
+    private string _captureMaxRecordSeconds = "60";
+    private bool _captureIncludeCursor = true;
+    private string _capturePreCaptureDelayMs = "250";
     private int _selectedSectionIndex;
     private string _statusMessage = string.Empty;
     private bool _isPluginValidationRunning;
@@ -249,6 +255,42 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         set => SetField(ref _fastFlowLmMaxContextBytes, value);
     }
 
+    public bool CaptureEnabled
+    {
+        get => _captureEnabled;
+        set => SetField(ref _captureEnabled, value);
+    }
+
+    public string CaptureOutputDirectory
+    {
+        get => _captureOutputDirectory;
+        set => SetField(ref _captureOutputDirectory, value);
+    }
+
+    public string CaptureDefaultRecordSeconds
+    {
+        get => _captureDefaultRecordSeconds;
+        set => SetField(ref _captureDefaultRecordSeconds, value);
+    }
+
+    public string CaptureMaxRecordSeconds
+    {
+        get => _captureMaxRecordSeconds;
+        set => SetField(ref _captureMaxRecordSeconds, value);
+    }
+
+    public bool CaptureIncludeCursor
+    {
+        get => _captureIncludeCursor;
+        set => SetField(ref _captureIncludeCursor, value);
+    }
+
+    public string CapturePreCaptureDelayMs
+    {
+        get => _capturePreCaptureDelayMs;
+        set => SetField(ref _capturePreCaptureDelayMs, value);
+    }
+
     public string StatusMessage
     {
         get => _statusMessage;
@@ -312,7 +354,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// The activation chord as it would be shown to the user (e.g. "Ctrl Alt Space").
     public string HotkeyPreview => BuildBinding().ToDisplayString();
 
-    public bool IsValid => BuildModifiers().Count > 0 && IsKeyValid(_key) && FastFlowLmNumbersCanBeSaved();
+    public bool IsValid => BuildModifiers().Count > 0
+        && IsKeyValid(_key)
+        && FastFlowLmNumbersCanBeSaved()
+        && CaptureNumbersCanBeSaved();
 
     /// <summary>
     /// Builds a LauncherSettings snapshot from the view-model's current state.
@@ -327,6 +372,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         ThemeMode = _themeMode,
         MotionProfile = _motionProfile,
         FastFlowLm = BuildFastFlowLmSettings(),
+        Capture = BuildCaptureSettings(),
     };
 
     /// <summary>
@@ -359,6 +405,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         if (_fastFlowLmEnabled && !FastFlowLmNumbersAreValid())
         {
             StatusMessage = "FastFlowLM numeric settings must be positive whole numbers.";
+            return false;
+        }
+
+        if (_captureEnabled && !CaptureNumbersAreValid())
+        {
+            StatusMessage = "Capture numeric settings must be positive, within limits, and default duration must not exceed max duration.";
             return false;
         }
 
@@ -485,6 +537,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _fastFlowLmMaxContextFiles = settings.FastFlowLm.MaxContextFiles.ToString(System.Globalization.CultureInfo.InvariantCulture);
         _fastFlowLmMaxFileBytes = settings.FastFlowLm.MaxFileBytes.ToString(System.Globalization.CultureInfo.InvariantCulture);
         _fastFlowLmMaxContextBytes = settings.FastFlowLm.MaxContextBytes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _captureEnabled = settings.Capture.Enabled;
+        _captureOutputDirectory = settings.Capture.OutputDirectory;
+        _captureDefaultRecordSeconds = settings.Capture.DefaultRecordSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _captureMaxRecordSeconds = settings.Capture.MaxRecordSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _captureIncludeCursor = settings.Capture.IncludeCursor;
+        _capturePreCaptureDelayMs = settings.Capture.PreCaptureDelayMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -584,6 +642,25 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         };
     }
 
+    private CaptureSettings BuildCaptureSettings()
+    {
+        var defaults = new CaptureSettings();
+        var maxRecordSeconds = ParsePositiveInt(_captureMaxRecordSeconds, defaults.MaxRecordSeconds, maxValue: 300);
+        return new CaptureSettings
+        {
+            Enabled = _captureEnabled,
+            OutputDirectory = string.IsNullOrWhiteSpace(_captureOutputDirectory)
+                ? string.Empty
+                : _captureOutputDirectory.Trim(),
+            DefaultRecordSeconds = Math.Min(
+                ParsePositiveInt(_captureDefaultRecordSeconds, defaults.DefaultRecordSeconds, maxValue: 300),
+                maxRecordSeconds),
+            MaxRecordSeconds = maxRecordSeconds,
+            IncludeCursor = _captureIncludeCursor,
+            PreCaptureDelayMs = ParseNonNegativeInt(_capturePreCaptureDelayMs, defaults.PreCaptureDelayMs, maxValue: 5000),
+        };
+    }
+
     private bool FastFlowLmNumbersCanBeSaved() =>
         !_fastFlowLmEnabled || FastFlowLmNumbersAreValid();
 
@@ -594,6 +671,29 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         && IsPositiveInt(_fastFlowLmMaxFileBytes)
         && IsPositiveInt(_fastFlowLmMaxContextBytes);
 
+    private bool CaptureNumbersCanBeSaved() =>
+        !_captureEnabled || CaptureNumbersAreValid();
+
+    private bool CaptureNumbersAreValid()
+    {
+        if (!IsPositiveInt(_captureDefaultRecordSeconds, maxValue: 300)
+            || !IsPositiveInt(_captureMaxRecordSeconds, maxValue: 300)
+            || !IsNonNegativeInt(_capturePreCaptureDelayMs, maxValue: 5000))
+        {
+            return false;
+        }
+
+        var defaultRecordSeconds = int.Parse(
+            _captureDefaultRecordSeconds,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture);
+        var maxRecordSeconds = int.Parse(
+            _captureMaxRecordSeconds,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture);
+        return defaultRecordSeconds <= maxRecordSeconds;
+    }
+
     private static bool IsPositiveInt(string? value, int maxValue = int.MaxValue) =>
         int.TryParse(
             value,
@@ -603,6 +703,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         && parsed > 0
         && parsed <= maxValue;
 
+    private static bool IsNonNegativeInt(string? value, int maxValue = int.MaxValue) =>
+        int.TryParse(
+            value,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+        && parsed >= 0
+        && parsed <= maxValue;
+
     private static int ParsePositiveInt(string? value, int fallback, int maxValue = int.MaxValue) =>
         int.TryParse(
             value,
@@ -610,6 +719,17 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             System.Globalization.CultureInfo.InvariantCulture,
             out var parsed)
         && parsed > 0
+        && parsed <= maxValue
+            ? parsed
+            : fallback;
+
+    private static int ParseNonNegativeInt(string? value, int fallback, int maxValue = int.MaxValue) =>
+        int.TryParse(
+            value,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+        && parsed >= 0
         && parsed <= maxValue
             ? parsed
             : fallback;

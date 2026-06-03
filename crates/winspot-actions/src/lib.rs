@@ -22,8 +22,10 @@ impl ActionPolicy {
             allowed: [
                 ActionCapability::ClipboardWrite,
                 ActionCapability::FilesystemRead,
+                ActionCapability::FilesystemWrite,
                 ActionCapability::ProcessExecution,
                 ActionCapability::ProcessInspection,
+                ActionCapability::ScreenCapture,
                 ActionCapability::ShellExecution,
                 ActionCapability::PluginExecution,
             ]
@@ -164,6 +166,7 @@ fn plugin_command_action(action: &ActionRequested) -> anyhow::Result<String> {
     let plugin_id = action
         .result_id
         .strip_prefix("plugin:")
+        .and_then(|payload| payload.split(':').next())
         .map(str::trim)
         .filter(|id| !id.is_empty())
         .ok_or_else(|| anyhow::anyhow!("refused to run {}: malformed plugin id", action.title))?;

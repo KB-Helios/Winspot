@@ -580,9 +580,10 @@ pub fn is_valid_plugin_id(id: &str) -> bool {
 }
 
 pub fn parse_plugin_result_id(result_id: &str) -> Result<&str, PluginActionAuthorizationError> {
-    let id = result_id
+    let payload = result_id
         .strip_prefix("plugin:")
         .ok_or(PluginActionAuthorizationError::MalformedId)?;
+    let id = payload.split(':').next().unwrap_or(payload);
 
     if is_valid_plugin_id(id) {
         Ok(id)
@@ -594,7 +595,8 @@ pub fn parse_plugin_result_id(result_id: &str) -> Result<&str, PluginActionAutho
 /// Provides the collection of built-in plugin manifests shipped with the application.
 ///
 /// The returned vector contains the default manifests for internal plugins (enabled by default),
-/// including "calculator", "terminal", "clipboard", "unit-conversion", and "fastflowlm".
+/// including "calculator", "terminal", "clipboard", "unit-conversion", "fastflowlm",
+/// and "windows-capture".
 ///
 /// # Examples
 ///
@@ -602,7 +604,7 @@ pub fn parse_plugin_result_id(result_id: &str) -> Result<&str, PluginActionAutho
 /// let built_ins = built_in_plugin_manifests();
 /// assert!(built_ins.iter().any(|m| m.id == "calculator"));
 /// assert!(built_ins.iter().any(|m| m.id == "fastflowlm"));
-/// assert_eq!(built_ins.len(), 5);
+/// assert_eq!(built_ins.len(), 6);
 /// ```
 pub fn built_in_plugin_manifests() -> Vec<PluginManifest> {
     vec![
@@ -640,6 +642,17 @@ pub fn built_in_plugin_manifests() -> Vec<PluginManifest> {
             ],
             enabled: true,
         },
+        PluginManifest {
+            id: "windows-capture".to_string(),
+            name: "Windows Capture".to_string(),
+            capabilities: vec![
+                ActionCapability::PluginExecution,
+                ActionCapability::ScreenCapture,
+                ActionCapability::FilesystemWrite,
+                ActionCapability::ProcessInspection,
+            ],
+            enabled: true,
+        },
     ]
 }
 
@@ -669,8 +682,9 @@ fn unknown_field_warnings(value: &Value) -> Vec<PluginValidationIssue> {
 ///
 /// This inspects the manifest's capabilities and emits one `PluginValidationIssue` (severity:
 /// `Warning`, stage: `Policy`, code: `"ignored_user_executable_capability"`) for each capability
-/// that grants executable behavior (`PluginExecution`, `ProcessExecution`, `ShellExecution`),
-/// since user plugins are search-only in V1.
+/// that grants executable or sensitive behavior (`PluginExecution`, `ProcessExecution`,
+/// `ShellExecution`, `ScreenCapture`, or `FilesystemWrite`), since user plugins are search-only
+/// in V1.
 ///
 /// # Returns
 ///
@@ -699,6 +713,8 @@ fn user_policy_warnings(manifest: &PluginManifest) -> Vec<PluginValidationIssue>
                 ActionCapability::PluginExecution
                     | ActionCapability::ProcessExecution
                     | ActionCapability::ShellExecution
+                    | ActionCapability::ScreenCapture
+                    | ActionCapability::FilesystemWrite
             )
         })
         .map(|capability| {
@@ -717,17 +733,22 @@ fn user_policy_warnings(manifest: &PluginManifest) -> Vec<PluginValidationIssue>
 
 /// Checks whether a built-in plugin id is treated as providing an executable action.
 ///
-/// Returns `true` if the id is one of `"calculator"`, `"terminal"`, or `"fastflowlm"`, `false` otherwise.
+/// Returns `true` if the id is one of `"calculator"`, `"terminal"`, `"fastflowlm"`,
+/// or `"windows-capture"`, `false` otherwise.
 ///
 /// # Examples
 ///
 /// ```ignore
 /// assert!(is_builtin_executable("calculator"));
 /// assert!(is_builtin_executable("fastflowlm"));
+/// assert!(is_builtin_executable("windows-capture"));
 /// assert!(!is_builtin_executable("clipboard"));
 /// ```
 fn is_builtin_executable(id: &str) -> bool {
-    matches!(id, "calculator" | "terminal" | "fastflowlm")
+    matches!(
+        id,
+        "calculator" | "terminal" | "fastflowlm" | "windows-capture"
+    )
 }
 
 /// Creates a plugin validation issue with severity `Warning`.

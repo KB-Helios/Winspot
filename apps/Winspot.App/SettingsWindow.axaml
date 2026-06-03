@@ -248,6 +248,51 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Classes="panel">
+                            <StackPanel Spacing="12">
+                                <TextBlock Classes="section-title" Text="Windows Capture" />
+                                <CheckBox Content="Enable Windows Capture" IsChecked="{Binding CaptureEnabled}" />
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Output folder" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding CaptureEnabled}"
+                                        Text="{Binding CaptureOutputDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Default record seconds" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding CaptureEnabled}"
+                                        MaxLength="3"
+                                        Text="{Binding CaptureDefaultRecordSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="8" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Max record seconds" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding CaptureEnabled}"
+                                        MaxLength="3"
+                                        Text="{Binding CaptureMaxRecordSeconds, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="60" />
+                                </Grid>
+                                <CheckBox
+                                    Content="Include cursor"
+                                    IsChecked="{Binding CaptureIncludeCursor}"
+                                    IsEnabled="{Binding CaptureEnabled}" />
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Pre-capture delay ms" />
+                                    <TextBox
+                                        Grid.Column="1"
+                                        IsEnabled="{Binding CaptureEnabled}"
+                                        MaxLength="4"
+                                        Text="{Binding CapturePreCaptureDelayMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="250" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <ItemsControl ItemsSource="{Binding PluginValidationEntries}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="vm:PluginValidationEntryViewItem" x:DataType="vm:PluginValidationEntryViewItem">
