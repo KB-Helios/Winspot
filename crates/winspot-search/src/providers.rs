@@ -624,6 +624,7 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
             .filter(|manifest| {
                 manifest.enabled && manifest.name.to_lowercase().contains(&normalized)
             })
+            .filter(|manifest| manifest.id != "fastflowlm")
             .map(|manifest| {
                 plugin_result(
                     &manifest.id,
@@ -657,6 +658,7 @@ impl DynamicSearchProvider for PluginProvider {
         self.registry
             .enabled_manifests()
             .filter(|manifest| manifest.name.to_lowercase().contains(&normalized))
+            .filter(|manifest| manifest.id != "fastflowlm")
             .map(|manifest| {
                 plugin_result(
                     &manifest.id,

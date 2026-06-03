@@ -27,6 +27,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _showTrayIcon = true;
     private ThemeMode _themeMode = ThemeMode.Dark;
     private MotionProfile _motionProfile = MotionProfile.Snappy240;
+    private bool _fastFlowLmEnabled = true;
+    private string _fastFlowLmModelTag = "gemma4-it:e2b";
+    private string _fastFlowLmExecutablePath = "flm";
+    private string _fastFlowLmPort = "52625";
+    private string _fastFlowLmIdleTimeoutSeconds = "120";
+    private string _fastFlowLmMaxContextFiles = "5";
+    private string _fastFlowLmMaxFileBytes = (1024 * 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private string _fastFlowLmMaxContextBytes = (4 * 1024 * 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private int _selectedSectionIndex;
     private string _statusMessage = string.Empty;
 
@@ -184,6 +192,54 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool FastFlowLmEnabled
+    {
+        get => _fastFlowLmEnabled;
+        set => SetField(ref _fastFlowLmEnabled, value);
+    }
+
+    public string FastFlowLmModelTag
+    {
+        get => _fastFlowLmModelTag;
+        set => SetField(ref _fastFlowLmModelTag, value);
+    }
+
+    public string FastFlowLmExecutablePath
+    {
+        get => _fastFlowLmExecutablePath;
+        set => SetField(ref _fastFlowLmExecutablePath, value);
+    }
+
+    public string FastFlowLmPort
+    {
+        get => _fastFlowLmPort;
+        set => SetField(ref _fastFlowLmPort, value);
+    }
+
+    public string FastFlowLmIdleTimeoutSeconds
+    {
+        get => _fastFlowLmIdleTimeoutSeconds;
+        set => SetField(ref _fastFlowLmIdleTimeoutSeconds, value);
+    }
+
+    public string FastFlowLmMaxContextFiles
+    {
+        get => _fastFlowLmMaxContextFiles;
+        set => SetField(ref _fastFlowLmMaxContextFiles, value);
+    }
+
+    public string FastFlowLmMaxFileBytes
+    {
+        get => _fastFlowLmMaxFileBytes;
+        set => SetField(ref _fastFlowLmMaxFileBytes, value);
+    }
+
+    public string FastFlowLmMaxContextBytes
+    {
+        get => _fastFlowLmMaxContextBytes;
+        set => SetField(ref _fastFlowLmMaxContextBytes, value);
+    }
+
     public string StatusMessage
     {
         get => _statusMessage;
@@ -193,7 +249,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// The activation chord as it would be shown to the user (e.g. "Ctrl Alt Space").
     public string HotkeyPreview => BuildBinding().ToDisplayString();
 
-    public bool IsValid => BuildModifiers().Count > 0 && IsKeyValid(_key);
+    public bool IsValid => BuildModifiers().Count > 0 && IsKeyValid(_key) && FastFlowLmNumbersAreValid();
 
     public LauncherSettings BuildSettings() => new()
     {
@@ -203,6 +259,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         ReduceMotion = ReduceMotion,
         ThemeMode = _themeMode,
         MotionProfile = _motionProfile,
+        FastFlowLm = BuildFastFlowLmSettings(),
     };
 
     public bool TrySave()
@@ -216,6 +273,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         if (!IsKeyValid(_key))
         {
             StatusMessage = "Enter a single letter or number, or a key such as Space or Enter.";
+            return false;
+        }
+
+        if (!FastFlowLmNumbersAreValid())
+        {
+            StatusMessage = "FastFlowLM numeric settings must be positive whole numbers.";
             return false;
         }
 
@@ -282,6 +345,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _showTrayIcon = settings.ShowTrayIcon;
         _themeMode = settings.ThemeMode;
         _motionProfile = settings.ReduceMotion ? MotionProfile.Reduced : settings.MotionProfile;
+        _fastFlowLmEnabled = settings.FastFlowLm.Enabled;
+        _fastFlowLmModelTag = settings.FastFlowLm.ModelTag;
+        _fastFlowLmExecutablePath = settings.FastFlowLm.ExecutablePath;
+        _fastFlowLmPort = settings.FastFlowLm.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _fastFlowLmIdleTimeoutSeconds = settings.FastFlowLm.IdleTimeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _fastFlowLmMaxContextFiles = settings.FastFlowLm.MaxContextFiles.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _fastFlowLmMaxFileBytes = settings.FastFlowLm.MaxFileBytes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _fastFlowLmMaxContextBytes = settings.FastFlowLm.MaxContextBytes.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private HotkeyBinding BuildBinding() => new()
@@ -332,6 +403,53 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         return NamedKeys.Contains(trimmed);
     }
+
+    private FastFlowLmSettings BuildFastFlowLmSettings()
+    {
+        var defaults = new FastFlowLmSettings();
+        return new FastFlowLmSettings
+        {
+            Enabled = _fastFlowLmEnabled,
+            ModelTag = string.IsNullOrWhiteSpace(_fastFlowLmModelTag)
+                ? defaults.ModelTag
+                : _fastFlowLmModelTag.Trim(),
+            ExecutablePath = string.IsNullOrWhiteSpace(_fastFlowLmExecutablePath)
+                ? defaults.ExecutablePath
+                : _fastFlowLmExecutablePath.Trim(),
+            Port = ParsePositiveInt(_fastFlowLmPort, defaults.Port),
+            IdleTimeoutSeconds = ParsePositiveInt(_fastFlowLmIdleTimeoutSeconds, defaults.IdleTimeoutSeconds),
+            MaxContextFiles = ParsePositiveInt(_fastFlowLmMaxContextFiles, defaults.MaxContextFiles),
+            MaxFileBytes = ParsePositiveInt(_fastFlowLmMaxFileBytes, defaults.MaxFileBytes),
+            MaxContextBytes = ParsePositiveInt(_fastFlowLmMaxContextBytes, defaults.MaxContextBytes),
+        };
+    }
+
+    private bool FastFlowLmNumbersAreValid() =>
+        IsPositiveInt(_fastFlowLmPort, maxValue: 65535)
+        && IsPositiveInt(_fastFlowLmIdleTimeoutSeconds)
+        && IsPositiveInt(_fastFlowLmMaxContextFiles)
+        && IsPositiveInt(_fastFlowLmMaxFileBytes)
+        && IsPositiveInt(_fastFlowLmMaxContextBytes);
+
+    private static bool IsPositiveInt(string? value, int maxValue = int.MaxValue) =>
+        int.TryParse(
+            value,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+        && parsed > 0
+        && parsed <= maxValue;
+
+    private static int ParsePositiveInt(string? value, int fallback, int maxValue = int.MaxValue) =>
+        int.TryParse(
+            value,
+            System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+        && parsed > 0
+        && parsed <= maxValue
+            ? parsed
+            : fallback;
 
     private void SetChord(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
     {

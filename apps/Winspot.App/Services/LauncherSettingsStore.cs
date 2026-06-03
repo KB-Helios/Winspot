@@ -111,6 +111,7 @@ public sealed class LauncherSettingsStore
         ReduceMotion = settings.ReduceMotion,
         ThemeMode = settings.ThemeMode,
         MotionProfile = settings.MotionProfile,
+        FastFlowLm = NormalizeFastFlowLm(settings.FastFlowLm),
     };
 
     private static LauncherSettings NormalizeSettings(LauncherSettings settings)
@@ -124,6 +125,7 @@ public sealed class LauncherSettingsStore
             ReduceMotion = motionProfile == MotionProfile.Reduced,
             ThemeMode = settings.ThemeMode,
             MotionProfile = motionProfile,
+            FastFlowLm = NormalizeFastFlowLm(settings.FastFlowLm),
         };
     }
 
@@ -147,6 +149,7 @@ public sealed class LauncherSettingsStore
                 ReduceMotion = ReadBoolean(root, "reduceMotion", defaults.ReduceMotion),
                 ThemeMode = ReadEnum(root, "themeMode", defaults.ThemeMode),
                 MotionProfile = ReadEnum(root, "motionProfile", defaults.MotionProfile),
+                FastFlowLm = ReadFastFlowLm(root, defaults.FastFlowLm),
             };
 
             return NormalizeSettings(recovered);
@@ -188,6 +191,71 @@ public sealed class LauncherSettingsStore
     private static bool ReadBoolean(JsonElement root, string propertyName, bool fallback) =>
         root.TryGetProperty(propertyName, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? value.GetBoolean()
+            : fallback;
+
+    private static FastFlowLmSettings NormalizeFastFlowLm(FastFlowLmSettings? settings)
+    {
+        var defaults = new FastFlowLmSettings();
+        if (settings is null)
+        {
+            return defaults;
+        }
+
+        return new FastFlowLmSettings
+        {
+            Enabled = settings.Enabled,
+            ModelTag = string.IsNullOrWhiteSpace(settings.ModelTag)
+                ? defaults.ModelTag
+                : settings.ModelTag.Trim(),
+            ExecutablePath = string.IsNullOrWhiteSpace(settings.ExecutablePath)
+                ? defaults.ExecutablePath
+                : settings.ExecutablePath.Trim(),
+            Port = settings.Port is > 0 and <= 65535 ? settings.Port : defaults.Port,
+            IdleTimeoutSeconds = settings.IdleTimeoutSeconds > 0
+                ? settings.IdleTimeoutSeconds
+                : defaults.IdleTimeoutSeconds,
+            MaxContextFiles = settings.MaxContextFiles > 0
+                ? settings.MaxContextFiles
+                : defaults.MaxContextFiles,
+            MaxFileBytes = settings.MaxFileBytes > 0
+                ? settings.MaxFileBytes
+                : defaults.MaxFileBytes,
+            MaxContextBytes = settings.MaxContextBytes > 0
+                ? settings.MaxContextBytes
+                : defaults.MaxContextBytes,
+        };
+    }
+
+    private static FastFlowLmSettings ReadFastFlowLm(JsonElement root, FastFlowLmSettings fallback)
+    {
+        if (!root.TryGetProperty("fastFlowLm", out var settings) || settings.ValueKind != JsonValueKind.Object)
+        {
+            return fallback;
+        }
+
+        return NormalizeFastFlowLm(new FastFlowLmSettings
+        {
+            Enabled = ReadBoolean(settings, "enabled", fallback.Enabled),
+            ModelTag = ReadString(settings, "modelTag", fallback.ModelTag),
+            ExecutablePath = ReadString(settings, "executablePath", fallback.ExecutablePath),
+            Port = ReadInteger(settings, "port", fallback.Port),
+            IdleTimeoutSeconds = ReadInteger(settings, "idleTimeoutSeconds", fallback.IdleTimeoutSeconds),
+            MaxContextFiles = ReadInteger(settings, "maxContextFiles", fallback.MaxContextFiles),
+            MaxFileBytes = ReadInteger(settings, "maxFileBytes", fallback.MaxFileBytes),
+            MaxContextBytes = ReadInteger(settings, "maxContextBytes", fallback.MaxContextBytes),
+        });
+    }
+
+    private static string ReadString(JsonElement root, string propertyName, string fallback) =>
+        root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? fallback
+            : fallback;
+
+    private static int ReadInteger(JsonElement root, string propertyName, int fallback) =>
+        root.TryGetProperty(propertyName, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+            ? number
             : fallback;
 
     private static TEnum ReadEnum<TEnum>(JsonElement root, string propertyName, TEnum fallback)

@@ -617,6 +617,16 @@ pub fn built_in_plugin_manifests() -> Vec<PluginManifest> {
             capabilities: vec![ActionCapability::ClipboardWrite],
             enabled: true,
         },
+        PluginManifest {
+            id: "fastflowlm".to_string(),
+            name: "FastFlowLM".to_string(),
+            capabilities: vec![
+                ActionCapability::PluginExecution,
+                ActionCapability::ProcessExecution,
+                ActionCapability::FilesystemRead,
+            ],
+            enabled: true,
+        },
     ]
 }
 
@@ -669,7 +679,7 @@ fn user_policy_warnings(manifest: &PluginManifest) -> Vec<PluginValidationIssue>
 }
 
 fn is_builtin_executable(id: &str) -> bool {
-    matches!(id, "calculator" | "terminal")
+    matches!(id, "calculator" | "terminal" | "fastflowlm")
 }
 
 fn warning_issue(

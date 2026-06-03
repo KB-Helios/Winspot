@@ -135,9 +135,27 @@ fn with_built_ins_registers_all_built_in_plugins() {
     let registry = PluginRegistry::with_built_ins();
     let ids: Vec<&str> = registry.manifests().map(|m| m.id.as_str()).collect();
 
-    for expected in ["calculator", "terminal", "clipboard", "unit-conversion"] {
+    for expected in [
+        "calculator",
+        "terminal",
+        "clipboard",
+        "unit-conversion",
+        "fastflowlm",
+    ] {
         assert!(ids.contains(&expected), "missing built-in {expected}");
     }
+}
+
+#[test]
+fn registry_authorizes_fastflowlm_builtin_plugin() {
+    let registry = PluginRegistry::with_built_ins();
+
+    assert!(registry.plugin_has_executable_action("fastflowlm"));
+    assert!(
+        registry
+            .ensure_plugin_command_allowed("plugin:fastflowlm")
+            .is_ok()
+    );
 }
 
 #[test]

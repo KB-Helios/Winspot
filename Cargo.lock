@@ -368,8 +368,22 @@ dependencies = [
  "windows-sys",
  "winspot-actions",
  "winspot-core",
+ "winspot-fastflowlm",
+ "winspot-index",
  "winspot-plugins",
  "winspot-preview",
+ "winspot-search",
+]
+
+[[package]]
+name = "winspot-fastflowlm"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "winspot-core",
+ "winspot-index",
  "winspot-search",
 ]
 

@@ -14,6 +14,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     /// dispatching an action to the daemon. Kept in sync with the Rust
     /// `WINSPOT_SETTINGS_COMMAND_ID` constant.
     public const string SettingsCommandId = "command:winspot-settings";
+    public const string FastFlowLmResultId = "plugin:fastflowlm";
 
     private readonly IWinspotIpcClient _ipcClient;
     private CancellationTokenSource? _queryCancellation;
@@ -161,11 +162,20 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
         try
         {
-            var action = SelectedActionForExecution(SelectedResult);
-            StatusText = $"Running {action.Label} on {SelectedResult.Title}";
-            var message = await _ipcClient.ExecuteAsync(SelectedResult, action, cancellationToken);
+            var selectedResult = SelectedResult;
+            var action = SelectedActionForExecution(selectedResult);
+            StatusText = $"Running {action.Label} on {selectedResult.Title}";
+            var message = await _ipcClient.ExecuteAsync(selectedResult, action, cancellationToken);
             if (!cancellationToken.IsCancellationRequested)
             {
+                if (IsFastFlowLmResult(selectedResult))
+                {
+                    _previewCancellation?.Cancel();
+                    SetPreview(selectedResult.Title, message);
+                    StatusText = "FastFlowLM answered";
+                    return false;
+                }
+
                 StatusText = message;
                 return true;
             }
@@ -262,6 +272,10 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
 
         return new ActionItem(result.PrimaryAction, result.PrimaryAction, result.PrimaryAction);
     }
+
+    private static bool IsFastFlowLmResult(SearchResultItem result) =>
+        result.Id == FastFlowLmResultId
+        || string.Equals(result.Source, "fastflowlm", StringComparison.OrdinalIgnoreCase);
 
     private async Task RefreshAsync(string query)
     {

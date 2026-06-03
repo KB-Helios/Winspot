@@ -188,6 +188,29 @@ public sealed class LauncherViewModelTests
     }
 
     [TestMethod]
+    public async Task AcceptSelection_WithFastFlowLmResultKeepsLauncherOpenAndShowsAnswerInPreview()
+    {
+        var client = new FakeWinspotIpcClient { NextExecuteMessage = "The roadmap is ready." };
+        var viewModel = new LauncherViewModel(client);
+        viewModel.SelectedResult = new SearchResultItem(
+            "plugin:fastflowlm",
+            "summarize roadmap",
+            "Ask FastFlowLM with launcher context",
+            "Plugin",
+            1,
+            "PluginCommand",
+            new[] { new ActionItem("run-plugin", "Ask", "PluginCommand") },
+            "fastflowlm");
+
+        var shouldHide = await viewModel.AcceptSelectionAsync();
+
+        Assert.IsFalse(shouldHide);
+        Assert.AreEqual("FastFlowLM answered", viewModel.StatusText);
+        Assert.AreEqual("summarize roadmap", viewModel.PreviewTitle);
+        Assert.AreEqual("The roadmap is ready.", viewModel.PreviewBody);
+    }
+
+    [TestMethod]
     public async Task AcceptSelection_WhenActionChipIsFocused_ExecutesFocusedActionKind()
     {
         var client = new FakeWinspotIpcClient();
@@ -268,13 +291,15 @@ public sealed class LauncherViewModelTests
 
         public string? LastActionKind { get; private set; }
 
+        public string NextExecuteMessage { get; set; } = "Executed";
+
         public Task<string> ExecuteAsync(
             SearchResultItem result,
             ActionItem action,
             CancellationToken cancellationToken)
         {
             LastActionKind = action.Kind;
-            return Task.FromResult("Executed");
+            return Task.FromResult(NextExecuteMessage);
         }
 
         public Task<PreviewItem?> GetPreviewAsync(SearchResultItem result, CancellationToken cancellationToken)

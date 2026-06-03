@@ -18,6 +18,11 @@ use winspot_core::{
     MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PluginDiagnosticsReady, PreviewChunk, PreviewReady,
     PreviewRequested, ResultBatch, SearchCompleted,
 };
+use winspot_fastflowlm::{
+    FASTFLOWLM_RESULT_ID, FastFlowLmProvider, FastFlowLmService, FastFlowLmSettings,
+    default_index_path, default_settings_path, load_settings_from_path,
+};
+use winspot_index::IndexStore;
 use winspot_plugins::{PluginRegistry, PluginValidationReport};
 use winspot_preview::{DefaultPreviewProvider, PreviewProvider};
 use winspot_search::{
@@ -59,6 +64,7 @@ pub struct DaemonRuntime {
     pub engine: SearchEngine,
     pub plugin_registry: Arc<PluginRegistry>,
     pub plugin_validation_report: Arc<PluginValidationReport>,
+    pub fastflowlm_service: Option<FastFlowLmService>,
 }
 
 impl DaemonRuntime {
@@ -68,6 +74,7 @@ impl DaemonRuntime {
             engine,
             plugin_registry: Arc::new(registry),
             plugin_validation_report: Arc::new(report),
+            fastflowlm_service: None,
         }
     }
 }
@@ -141,7 +148,9 @@ pub fn build_daemon_runtime(config: &PipeConfig) -> anyhow::Result<DaemonRuntime
     let (plugin_registry, plugin_validation_report) =
         build_plugin_registry(config.plugins_dir.as_deref());
 
-    let engine = SearchEngine::from_refreshable_providers_with_usage(
+    let fastflowlm_settings = load_fastflowlm_settings();
+
+    let mut engine = SearchEngine::from_refreshable_providers_with_usage(
         default_search_providers(),
         usage,
         CANDIDATE_TTL_SECONDS,
@@ -150,11 +159,15 @@ pub fn build_daemon_runtime(config: &PipeConfig) -> anyhow::Result<DaemonRuntime
     .with_dynamic_provider(Arc::new(CalculatorProvider))
     .with_dynamic_provider(Arc::new(UnitConversionProvider))
     .with_dynamic_provider(Arc::new(PluginProvider::new(Arc::clone(&plugin_registry))));
+    if fastflowlm_settings.enabled {
+        engine = engine.with_dynamic_provider(Arc::new(FastFlowLmProvider));
+    }
 
     Ok(DaemonRuntime {
         engine,
         plugin_registry,
         plugin_validation_report,
+        fastflowlm_service: build_fastflowlm_service(fastflowlm_settings),
     })
 }
 
@@ -190,6 +203,7 @@ pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyho
         engine: engine.clone(),
         plugin_registry,
         plugin_validation_report,
+        fastflowlm_service: build_fastflowlm_service(load_fastflowlm_settings()),
     };
     serve_runtime_pipe_once(config, &runtime).await
 }
@@ -395,6 +409,15 @@ fn build_preview_chunk(preview: &PreviewRequested) -> PreviewChunk {
 }
 
 fn build_preview(preview: PreviewRequested) -> PreviewReady {
+    if preview.result.id == FASTFLOWLM_RESULT_ID {
+        return PreviewReady {
+            preview_id: preview.preview_id,
+            title: preview.result.title,
+            body: "Press Enter to ask FastFlowLM. No model is loaded while previewing.".to_string(),
+            is_final: true,
+        };
+    }
+
     let payload = DefaultPreviewProvider.preview(&preview.result);
     PreviewReady {
         preview_id: preview.preview_id,
@@ -422,6 +445,12 @@ fn handle_action(
         };
     }
 
+    if action.primary_action == ActionKind::PluginCommand
+        && action.result_id == FASTFLOWLM_RESULT_ID
+    {
+        return handle_fastflowlm_action(action, runtime, config, now);
+    }
+
     let completed = ActionExecutor::new(ActionPolicy::allow_all_local()).execute(action.clone());
     if !completed.succeeded {
         return completed;
@@ -435,6 +464,44 @@ fn handle_action(
             action_id: action.action_id,
             succeeded: true,
             message,
+        },
+        Err(error) => winspot_core::ActionCompleted {
+            action_id: action.action_id,
+            succeeded: false,
+            message: error.to_string(),
+        },
+    }
+}
+
+fn handle_fastflowlm_action(
+    action: winspot_core::ActionRequested,
+    runtime: &DaemonRuntime,
+    config: &PipeConfig,
+    now: u64,
+) -> winspot_core::ActionCompleted {
+    let Some(service) = &runtime.fastflowlm_service else {
+        return winspot_core::ActionCompleted {
+            action_id: action.action_id,
+            succeeded: false,
+            message: "FastFlowLM integration is disabled".to_string(),
+        };
+    };
+
+    match service.ask(&action.title) {
+        Ok(answer) => match record_usage(&action, now, config).map(|_| {
+            runtime.engine.record_usage(&action.result_id, now);
+            answer
+        }) {
+            Ok(message) => winspot_core::ActionCompleted {
+                action_id: action.action_id,
+                succeeded: true,
+                message,
+            },
+            Err(error) => winspot_core::ActionCompleted {
+                action_id: action.action_id,
+                succeeded: false,
+                message: error.to_string(),
+            },
         },
         Err(error) => winspot_core::ActionCompleted {
             action_id: action.action_id,
@@ -500,6 +567,48 @@ fn default_plugins_dir() -> Option<PathBuf> {
         .map(|local_app_data| PathBuf::from(local_app_data).join("Winspot\\plugins"))
 }
 
+fn load_fastflowlm_settings() -> FastFlowLmSettings {
+    let Some(path) = default_settings_path() else {
+        return FastFlowLmSettings::default();
+    };
+
+    match load_settings_from_path(&path) {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!(
+                "winspot-daemon: failed to read FastFlowLM settings from {}: {error:?}",
+                path.display()
+            );
+            FastFlowLmSettings::default()
+        }
+    }
+}
+
+fn build_fastflowlm_service(settings: FastFlowLmSettings) -> Option<FastFlowLmService> {
+    if !settings.enabled {
+        return None;
+    }
+
+    let store = match default_index_path() {
+        Some(path) => IndexStore::open(&path).or_else(|error| {
+            eprintln!(
+                "winspot-daemon: failed to open launcher index {}: {error:?}; using empty index",
+                path.display()
+            );
+            IndexStore::open_in_memory()
+        }),
+        None => IndexStore::open_in_memory(),
+    };
+
+    match store {
+        Ok(store) => Some(FastFlowLmService::new(settings, store)),
+        Err(error) => {
+            eprintln!("winspot-daemon: failed to initialize FastFlowLM index context: {error:?}");
+            None
+        }
+    }
+}
+
 fn current_unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -515,9 +624,18 @@ fn is_first_pipe_instance_collision(error: &std::io::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::io;
+    use std::{
+        fs, io,
+        io::{Read, Write},
+        net::{TcpListener, TcpStream},
+        sync::{Arc, mpsc},
+        thread,
+    };
 
     use super::*;
+    use winspot_core::{ActionRequested, SearchResultKind};
+    use winspot_fastflowlm::{FastFlowLmService, FastFlowLmSettings};
+    use winspot_index::{IndexStore, IndexedItem};
 
     #[test]
     fn first_pipe_instance_collision_recognizes_windows_access_denied() {
@@ -531,5 +649,178 @@ mod tests {
         let error = io::Error::from_raw_os_error(123);
 
         assert!(!is_first_pipe_instance_collision(&error));
+    }
+
+    #[test]
+    fn fastflowlm_action_calls_local_server_and_returns_answer() {
+        let root = unique_test_dir("daemon-fastflowlm-action");
+        let fake_flm = root.join("flm.cmd");
+        fs::write(
+            &fake_flm,
+            "@echo off\r\nif \"%1\"==\"list\" if \"%2\"==\"--json\" echo [{\"name\":\"gemma4-it:e2b\",\"installed\":true}]\r\n",
+        )
+        .expect("write fake flm");
+        let roadmap = root.join("Roadmap.md");
+        fs::write(&roadmap, "Ship the FastFlowLM plugin").expect("write roadmap");
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind fake flm server");
+        let port = listener.local_addr().expect("fake flm addr").port();
+        let (body_tx, body_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().expect("accept fake flm request");
+                let request = read_http_request(&mut stream);
+                if request.starts_with("GET /v1/models") {
+                    write_json_response(&mut stream, r#"{"data":[{"id":"gemma4-it:e2b"}]}"#);
+                } else {
+                    body_tx.send(request).expect("send chat request body");
+                    write_json_response(
+                        &mut stream,
+                        r#"{"choices":[{"message":{"content":"The roadmap is ready."}}]}"#,
+                    );
+                }
+            }
+        });
+
+        let store = IndexStore::open_in_memory().expect("open index");
+        store
+            .upsert(&IndexedItem {
+                id: format!("file:{}", roadmap.display()),
+                title: "Roadmap.md".to_string(),
+                path: roadmap.display().to_string(),
+                kind: SearchResultKind::File,
+                modified_unix_seconds: 1,
+            })
+            .expect("index roadmap");
+        let service = FastFlowLmService::new(
+            FastFlowLmSettings {
+                executable_path: fake_flm.display().to_string(),
+                port,
+                ..FastFlowLmSettings::default()
+            },
+            store,
+        );
+        let (registry, report) = PluginRegistry::with_built_ins_with_report();
+        let runtime = DaemonRuntime {
+            engine: SearchEngine::from_results(Vec::new()),
+            plugin_registry: Arc::new(registry),
+            plugin_validation_report: Arc::new(report),
+            fastflowlm_service: Some(service),
+        };
+
+        let completed = handle_action(
+            ActionRequested {
+                action_id: "ask-1".to_string(),
+                result_id: FASTFLOWLM_RESULT_ID.to_string(),
+                title: "summarize roadmap".to_string(),
+                primary_action: ActionKind::PluginCommand,
+            },
+            &runtime,
+            &PipeConfig {
+                pipe_name: r"\\.\pipe\unused".to_string(),
+                usage_log_path: None,
+                plugins_dir: None,
+            },
+        );
+
+        assert!(completed.succeeded, "{}", completed.message);
+        assert_eq!(completed.message, "The roadmap is ready.");
+        let chat_request = body_rx.recv().expect("chat request captured");
+        assert!(chat_request.contains("Roadmap.md"));
+        assert!(chat_request.contains("Ship the FastFlowLM plugin"));
+
+        server.join().expect("fake flm server joins");
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn fastflowlm_action_reports_missing_executable() {
+        let store = IndexStore::open_in_memory().expect("open index");
+        let service = FastFlowLmService::new(
+            FastFlowLmSettings {
+                executable_path: "definitely-not-flm.exe".to_string(),
+                ..FastFlowLmSettings::default()
+            },
+            store,
+        );
+        let (registry, report) = PluginRegistry::with_built_ins_with_report();
+        let runtime = DaemonRuntime {
+            engine: SearchEngine::from_results(Vec::new()),
+            plugin_registry: Arc::new(registry),
+            plugin_validation_report: Arc::new(report),
+            fastflowlm_service: Some(service),
+        };
+
+        let completed = handle_action(
+            ActionRequested {
+                action_id: "ask-1".to_string(),
+                result_id: FASTFLOWLM_RESULT_ID.to_string(),
+                title: "test".to_string(),
+                primary_action: ActionKind::PluginCommand,
+            },
+            &runtime,
+            &PipeConfig {
+                pipe_name: r"\\.\pipe\unused".to_string(),
+                usage_log_path: None,
+                plugins_dir: None,
+            },
+        );
+
+        assert!(!completed.succeeded);
+        assert!(completed.message.contains("failed to run"));
+    }
+
+    fn unique_test_dir(label: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("{label}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create test dir");
+        root
+    }
+
+    fn read_http_request(stream: &mut TcpStream) -> String {
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 512];
+        let header_end = loop {
+            let read = stream.read(&mut buffer).expect("read fake flm request");
+            assert!(read > 0, "client closed before headers");
+            bytes.extend_from_slice(&buffer[..read]);
+            if let Some(position) = find_header_end(&bytes) {
+                break position;
+            }
+        };
+        let headers = String::from_utf8_lossy(&bytes[..header_end]).to_string();
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                line.split_once(':').and_then(|(name, value)| {
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+            })
+            .unwrap_or_default();
+        let body_start = header_end + 4;
+        while bytes.len().saturating_sub(body_start) < content_length {
+            let read = stream.read(&mut buffer).expect("read fake flm body");
+            assert!(read > 0, "client closed before body");
+            bytes.extend_from_slice(&buffer[..read]);
+        }
+
+        String::from_utf8_lossy(&bytes).to_string()
+    }
+
+    fn find_header_end(bytes: &[u8]) -> Option<usize> {
+        bytes.windows(4).position(|window| window == b"\r\n\r\n")
+    }
+
+    fn write_json_response(stream: &mut TcpStream, body: &str) {
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("write fake flm response");
     }
 }
