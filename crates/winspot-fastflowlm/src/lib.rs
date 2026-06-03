@@ -774,7 +774,7 @@ pub fn validate_installed_model_from_list_json(
     }
 
     anyhow::bail!(
-        "FastFlowLM model '{model_tag}' is not installed. Install {DEFAULT_MODEL_DISPLAY_NAME} separately before using Winspot AI."
+        "FastFlowLM model '{model_tag}' is not installed. Install '{model_tag}' separately before using Winspot AI."
     );
 }
 
@@ -1152,7 +1152,10 @@ fn read_to_vec_with_cap(
     loop {
         let remaining = max_bytes.saturating_sub(bytes.len());
         let read_len = chunk.len().min(remaining.saturating_add(1));
-        debug_assert!(read_len > 0, "read_len is always > 0 due to saturating_add(1)");
+        debug_assert!(
+            read_len > 0,
+            "read_len is always > 0 due to saturating_add(1)"
+        );
 
         let read = reader
             .read(&mut chunk[..read_len])

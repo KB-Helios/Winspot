@@ -691,7 +691,9 @@ impl DynamicSearchProvider for PluginProvider {
     /// ```
     fn search(&self, query: &str) -> Vec<SearchResult> {
         let normalized = query.trim().to_lowercase();
-        let registry = self.registry.read().unwrap();
+        let Ok(registry) = self.registry.read() else {
+            return Vec::new();
+        };
         registry
             .enabled_manifests()
             .filter(|manifest| manifest.name.to_lowercase().contains(&normalized))

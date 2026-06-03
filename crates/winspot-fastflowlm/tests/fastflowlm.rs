@@ -2,9 +2,9 @@ use std::fs;
 
 use winspot_core::{ActionKind, SearchResultKind};
 use winspot_fastflowlm::{
-    ContextLimits, FASTFLOWLM_RESULT_ID, FastFlowLmProvider, build_index_context,
-    parse_fastflowlm_prompt, should_stop_owned_process, validate_installed_model_from_list_json,
-    validate_models_response_json,
+    ContextLimits, DEFAULT_MODEL_DISPLAY_NAME, FASTFLOWLM_RESULT_ID, FastFlowLmProvider,
+    build_index_context, parse_fastflowlm_prompt, should_stop_owned_process,
+    validate_installed_model_from_list_json, validate_models_response_json,
 };
 use winspot_index::{IndexStore, IndexedItem};
 use winspot_search::providers::DynamicSearchProvider;
@@ -73,6 +73,7 @@ fn validate_installed_model_from_list_json_with_installed_model_succeeds() {
     let error = validate_installed_model_from_list_json(json, "missing:model")
         .expect_err("missing model should fail");
     assert!(error.to_string().contains("missing:model"));
+    assert!(!error.to_string().contains(DEFAULT_MODEL_DISPLAY_NAME));
 }
 
 #[test]
