@@ -183,6 +183,30 @@ fn build_plugin_registry(
     (Arc::new(registry), Arc::new(report))
 }
 
+fn current_plugin_validation_report(
+    runtime: &DaemonRuntime,
+    config: &PipeConfig,
+) -> PluginValidationReport {
+    let Some(dir) = config.plugins_dir.as_deref() else {
+        return runtime.plugin_validation_report.as_ref().clone();
+    };
+
+    let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
+    match registry.load_dir_into_with_report(dir) {
+        Ok(user_report) => {
+            report.extend(user_report);
+            report
+        }
+        Err(error) => {
+            eprintln!(
+                "winspot-daemon: failed to rescan plugins directory {}: {error:?}",
+                dir.display()
+            );
+            runtime.plugin_validation_report.as_ref().clone()
+        }
+    }
+}
+
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
     let (plugin_registry, plugin_validation_report) =
         build_plugin_registry(config.plugins_dir.as_deref());
@@ -337,16 +361,19 @@ fn handle_line(
                 true,
             ))
         }
-        IpcPayload::PluginDiagnosticsRequested(_) => Ok((
-            vec![IpcEnvelope::request(
-                request_id,
-                IpcPayload::PluginDiagnosticsReady(PluginDiagnosticsReady {
-                    report: serde_json::to_value(runtime.plugin_validation_report.as_ref())
-                        .context("serialize plugin validation report")?,
-                }),
-            )],
-            true,
-        )),
+        IpcPayload::PluginDiagnosticsRequested(_) => {
+            let report = current_plugin_validation_report(runtime, config);
+            Ok((
+                vec![IpcEnvelope::request(
+                    request_id,
+                    IpcPayload::PluginDiagnosticsReady(PluginDiagnosticsReady {
+                        report: serde_json::to_value(&report)
+                            .context("serialize plugin validation report")?,
+                    }),
+                )],
+                true,
+            ))
+        }
         IpcPayload::CancelRequest(cancel) => Ok((
             vec![IpcEnvelope::request(
                 request_id,

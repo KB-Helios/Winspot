@@ -282,6 +282,9 @@ public sealed class LauncherViewModelTests
             return Task.FromResult<PreviewItem?>(null);
         }
 
+        public Task<PluginValidationReport> GetPluginDiagnosticsAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(PluginValidationReport.Empty);
+
         public async IAsyncEnumerable<IReadOnlyList<SearchResultItem>> StreamSearchAsync(
             string query,
             [EnumeratorCancellation] CancellationToken cancellationToken)

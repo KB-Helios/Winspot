@@ -18,6 +18,7 @@ public sealed partial class SettingsWindow : Window
         ViewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        Opened += OnOpened;
     }
 
     public SettingsViewModel ViewModel { get; }
@@ -44,5 +45,15 @@ public sealed partial class SettingsWindow : Window
     private async void OnOpenPluginsFolderClick(object? sender, RoutedEventArgs e)
     {
         await ViewModel.OpenPluginsFolderAsync(CancellationToken.None);
+    }
+
+    private async void OnValidatePluginsClick(object? sender, RoutedEventArgs e)
+    {
+        await ViewModel.RefreshPluginValidationAsync(CancellationToken.None);
+    }
+
+    private async void OnOpened(object? sender, EventArgs e)
+    {
+        await ViewModel.RefreshPluginValidationAsync(CancellationToken.None);
     }
 }

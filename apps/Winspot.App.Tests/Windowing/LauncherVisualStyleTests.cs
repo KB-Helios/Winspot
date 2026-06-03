@@ -73,6 +73,12 @@ public sealed class LauncherVisualStyleTests
             StringAssert.Contains(axaml, $"Header=\"{section}\"");
         }
 
+        StringAssert.Contains(axaml, "PluginValidationSummary");
+        StringAssert.Contains(axaml, "PluginValidationEntries");
+        StringAssert.Contains(axaml, "OnValidatePluginsClick");
+        StringAssert.Contains(axaml, "ShowOnlyPluginValidationIssues");
+        StringAssert.Contains(axaml, "ScrollViewer");
+
         Assert.IsFalse(axaml.Contains("CornerRadius=\"12\""), "Settings surfaces should stay at 8px radius or lower.");
         Assert.IsFalse(axaml.Contains("<Setter Property=\"CornerRadius\" Value=\"12\""), "Settings card style should not use a 12px radius.");
     }
@@ -109,6 +115,15 @@ public sealed class LauncherVisualStyleTests
         Assert.IsFalse(viewModel.Contains("Could not open plugins folder."), "User-facing status strings should live in SettingsDisplayStrings.");
     }
 
+    [TestMethod]
+    public void SettingsWindowCode_WhenOpened_RefreshesPluginValidation()
+    {
+        var code = File.ReadAllText(FindSettingsWindowCodeBehind());
+
+        StringAssert.Contains(code, "Opened += OnOpened");
+        StringAssert.Contains(code, "RefreshPluginValidationAsync");
+    }
+
     private static string FindMainWindowAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "MainWindow.axaml"));
 
@@ -117,6 +132,9 @@ public sealed class LauncherVisualStyleTests
 
     private static string FindSettingsWindowAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "SettingsWindow.axaml"));
+
+    private static string FindSettingsWindowCodeBehind() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "SettingsWindow.axaml.cs"));
 
     private static string FindAppAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "App.axaml"));

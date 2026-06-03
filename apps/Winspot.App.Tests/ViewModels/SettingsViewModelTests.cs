@@ -257,6 +257,15 @@ public sealed class SettingsViewModelTests
     }
 
     [TestMethod]
+    public void Constructor_PluginValidationStartsUnchecked()
+    {
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath));
+
+        Assert.AreEqual("Unchecked", viewModel.PluginValidationHealth);
+        Assert.AreEqual("Plugin validation not checked.", viewModel.PluginValidationSummary);
+    }
+
+    [TestMethod]
     public async Task OpenPluginsFolderAsync_WhenInvoked_DispatchesFolderOpenThroughIpc()
     {
         var pluginsRoot = Path.Combine(Path.GetTempPath(), $"winspot-plugins-open-{Guid.NewGuid():N}");
@@ -271,11 +280,59 @@ public sealed class SettingsViewModelTests
         Assert.AreEqual("Opened plugins folder.", viewModel.StatusMessage);
     }
 
+    [TestMethod]
+    public async Task RefreshPluginValidationAsync_WhenReportHasIssues_UpdatesStatusAndEntries()
+    {
+        var client = new RecordingIpcClient
+        {
+            PluginReport = new PluginValidationReport(new[]
+            {
+                new PluginValidationEntry(
+                    "bad",
+                    "Bad",
+                    "C:\\Plugins\\bad.json",
+                    "User",
+                    "Rejected",
+                    false,
+                    new[] { new PluginValidationIssue("Error", "Manifest", "invalid_manifest", "plugin id is invalid") }),
+            }),
+        };
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), "C:\\Plugins", client);
+
+        await viewModel.RefreshPluginValidationAsync(CancellationToken.None);
+
+        Assert.AreEqual("Error", viewModel.PluginValidationHealth);
+        StringAssert.Contains(viewModel.PluginValidationSummary, "0 accepted");
+        StringAssert.Contains(viewModel.PluginValidationIssueSummary, "1 error");
+        Assert.AreEqual(1, viewModel.PluginValidationEntries.Count);
+        Assert.IsFalse(viewModel.IsPluginValidationRunning);
+    }
+
+    [TestMethod]
+    public async Task RefreshPluginValidationAsync_WhenBackendUnavailable_ShowsFailureStatus()
+    {
+        var client = new RecordingIpcClient
+        {
+            PluginDiagnosticsException = new InvalidOperationException("pipe unavailable"),
+        };
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath), "C:\\Plugins", client);
+
+        await viewModel.RefreshPluginValidationAsync(CancellationToken.None);
+
+        Assert.AreEqual("Unavailable", viewModel.PluginValidationHealth);
+        StringAssert.Contains(viewModel.PluginValidationSummary, "Plugin validation unavailable");
+        Assert.IsFalse(viewModel.IsPluginValidationRunning);
+    }
+
     private sealed class RecordingIpcClient : IWinspotIpcClient
     {
         public SearchResultItem? LastResult { get; private set; }
 
         public ActionItem? LastAction { get; private set; }
+
+        public PluginValidationReport PluginReport { get; init; } = PluginValidationReport.Empty;
+
+        public Exception? PluginDiagnosticsException { get; init; }
 
         public Task<IReadOnlyList<SearchResultItem>> SearchAsync(string query, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SearchResultItem>>(Array.Empty<SearchResultItem>());
@@ -289,5 +346,10 @@ public sealed class SettingsViewModelTests
 
         public Task<PreviewItem?> GetPreviewAsync(SearchResultItem result, CancellationToken cancellationToken) =>
             Task.FromResult<PreviewItem?>(null);
+
+        public Task<PluginValidationReport> GetPluginDiagnosticsAsync(CancellationToken cancellationToken) =>
+            PluginDiagnosticsException is not null
+                ? Task.FromException<PluginValidationReport>(PluginDiagnosticsException)
+                : Task.FromResult(PluginReport);
     }
 }

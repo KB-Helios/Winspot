@@ -3,6 +3,7 @@
     x:DataType="vm:SettingsViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:Winspot_App.Models"
     xmlns:vm="using:Winspot_App.ViewModels"
     Title="Winspot Settings"
     Width="720"
@@ -113,47 +114,110 @@
             </TabItem>
 
             <TabItem Header="Plugins">
-                <Border Classes="panel" Margin="0,10,0,0">
+                <ScrollViewer Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="12">
-                        <TextBlock Classes="section-title" Text="Plugins" />
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Built-in" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Classes="hint"
-                                VerticalAlignment="Center"
-                                Text="{Binding BuiltInPluginsText}"
-                                TextWrapping="Wrap" />
-                        </Grid>
-                        <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="User manifests" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Classes="hint"
-                                VerticalAlignment="Center"
-                                Text="{Binding UserPluginManifestCountText}" />
-                        </Grid>
-                        <Grid ColumnDefinitions="210,*,Auto" ColumnSpacing="18">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Folder" />
-                            <TextBlock
-                                Grid.Column="1"
-                                Classes="hint"
-                                VerticalAlignment="Center"
-                                Text="{Binding PluginsPath}"
-                                TextTrimming="CharacterEllipsis" />
-                            <Button
-                                Grid.Column="2"
-                                Classes="icon-button"
-                                Click="OnOpenPluginsFolderClick"
-                                ToolTip.Tip="Open folder">
-                                <TextBlock
-                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                    FontSize="15"
-                                    Text="&#xE838;" />
-                            </Button>
-                        </Grid>
+                        <Border Classes="panel">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                    <StackPanel Spacing="3">
+                                        <TextBlock Classes="section-title" Text="Plugin validation" />
+                                        <TextBlock
+                                            Classes="hint"
+                                            Text="{Binding PluginValidationSummary}"
+                                            TextWrapping="Wrap" />
+                                        <TextBlock Classes="hint" Text="{Binding PluginValidationIssueSummary}" />
+                                        <TextBlock Classes="hint" Text="{Binding PluginValidationLastCheckedText}" />
+                                    </StackPanel>
+                                    <Button
+                                        Grid.Column="1"
+                                        Click="OnValidatePluginsClick"
+                                        Content="Validate"
+                                        IsEnabled="{Binding !IsPluginValidationRunning}"
+                                        MinWidth="92" />
+                                    <Button
+                                        Grid.Column="2"
+                                        Classes="icon-button"
+                                        Click="OnOpenPluginsFolderClick"
+                                        ToolTip.Tip="Open folder">
+                                        <TextBlock
+                                            FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                            FontSize="15"
+                                            Text="&#xE838;" />
+                                    </Button>
+                                </Grid>
+
+                                <CheckBox
+                                    Content="Show only manifests with issues"
+                                    IsChecked="{Binding ShowOnlyPluginValidationIssues}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="panel">
+                            <StackPanel Spacing="12">
+                                <TextBlock Classes="section-title" Text="Plugin folder" />
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Built-in" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Classes="hint"
+                                        VerticalAlignment="Center"
+                                        Text="{Binding BuiltInPluginsText}"
+                                        TextWrapping="Wrap" />
+                                </Grid>
+                                <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="User manifests" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Classes="hint"
+                                        VerticalAlignment="Center"
+                                        Text="{Binding UserPluginManifestCountText}" />
+                                </Grid>
+                                <Grid ColumnDefinitions="210,*" ColumnSpacing="18">
+                                    <TextBlock Classes="label" VerticalAlignment="Center" Text="Folder" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Classes="hint"
+                                        VerticalAlignment="Center"
+                                        Text="{Binding PluginsPath}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding PluginValidationEntries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="models:PluginValidationEntry" x:DataType="models:PluginValidationEntry">
+                                    <Border Classes="panel" Margin="0,0,0,8">
+                                        <StackPanel Spacing="6">
+                                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                                                <TextBlock
+                                                    Classes="label"
+                                                    Text="{Binding DisplayName}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" Classes="hint" Text="{Binding Status}" />
+                                                <TextBlock Grid.Column="2" Classes="hint" Text="{Binding TrustSummary}" />
+                                            </Grid>
+                                            <TextBlock
+                                                Classes="hint"
+                                                Text="{Binding ManifestPath}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <ItemsControl ItemsSource="{Binding SafeIssues}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="models:PluginValidationIssue" x:DataType="models:PluginValidationIssue">
+                                                        <TextBlock
+                                                            Classes="hint"
+                                                            Text="{Binding DisplayText}"
+                                                            TextWrapping="Wrap" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
-                </Border>
+                </ScrollViewer>
             </TabItem>
 
             <TabItem Header="Diagnostics">
