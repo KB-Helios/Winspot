@@ -224,6 +224,13 @@ public sealed class SettingsViewModelTests
     public void TrySave_WithCaptureEnabledAndInvalidDurations_FailsWithoutPersisting()
     {
         var store = new LauncherSettingsStore(_settingsPath);
+        store.Save(new LauncherSettings
+        {
+            Capture = new CaptureSettings
+            {
+                DefaultRecordSeconds = 15,
+            },
+        });
         var viewModel = new SettingsViewModel(store)
         {
             CaptureEnabled = true,
@@ -237,7 +244,7 @@ public sealed class SettingsViewModelTests
         Assert.IsFalse(saved);
         Assert.IsFalse(viewModel.IsValid);
         StringAssert.Contains(viewModel.StatusMessage, "Capture numeric settings");
-        Assert.AreEqual(8, store.Load().Capture.DefaultRecordSeconds);
+        Assert.AreEqual(15, store.Load().Capture.DefaultRecordSeconds);
     }
 
     [TestMethod]

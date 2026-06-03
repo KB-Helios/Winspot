@@ -41,6 +41,22 @@ public sealed class MainWindowKeyboardTests
             1,
             "PluginCommand",
             Source: "windows-capture");
+        var captureIdOnly = new SearchResultItem(
+            "plugin:windows-capture:record:window:foreground:8",
+            "Record foreground window",
+            "Save a video capture",
+            "Plugin",
+            1,
+            "PluginCommand",
+            Source: "other-source");
+        var captureSourceOnly = new SearchResultItem(
+            "plugin:different-prefix:action",
+            "Different action",
+            "Different description",
+            "Plugin",
+            1,
+            "PluginCommand",
+            Source: "windows-capture");
         var fastFlowLm = new SearchResultItem(
             "plugin:fastflowlm",
             "Ask FastFlowLM",
@@ -51,6 +67,8 @@ public sealed class MainWindowKeyboardTests
             Source: "fastflowlm");
 
         Assert.IsTrue(MainWindow.ShouldHideBeforeExecutingResult(capture));
+        Assert.IsTrue(MainWindow.ShouldHideBeforeExecutingResult(captureIdOnly));
+        Assert.IsTrue(MainWindow.ShouldHideBeforeExecutingResult(captureSourceOnly));
         Assert.IsFalse(MainWindow.ShouldHideBeforeExecutingResult(fastFlowLm));
         Assert.IsFalse(MainWindow.ShouldHideBeforeExecutingResult(null));
     }

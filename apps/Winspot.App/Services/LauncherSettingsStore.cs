@@ -42,9 +42,11 @@ public sealed class LauncherSettingsStore
             var json = File.ReadAllText(_settingsPath);
             var shouldPersistRepair = false;
             LauncherSettings settings;
+            LauncherSettings? originalParsed = null;
             try
             {
-                settings = NormalizeSettings(JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings());
+                originalParsed = JsonSerializer.Deserialize<LauncherSettings>(json, JsonOptions) ?? new LauncherSettings();
+                settings = NormalizeSettings(originalParsed);
             }
             catch (JsonException)
             {
@@ -56,6 +58,17 @@ public sealed class LauncherSettingsStore
             {
                 settings = RepairHotkey(settings);
                 shouldPersistRepair = true;
+            }
+
+            if (!shouldPersistRepair && originalParsed is not null)
+            {
+                var originalCapture = originalParsed.Capture;
+                var normalizedCapture = NormalizeCapture(originalCapture);
+                if (!CaptureSettingsEquals(originalCapture, normalizedCapture))
+                {
+                    settings = settings with { Capture = normalizedCapture };
+                    shouldPersistRepair = true;
+                }
             }
 
             if (shouldPersistRepair)
@@ -288,6 +301,26 @@ public sealed class LauncherSettingsStore
         };
     }
 
+    private static bool CaptureSettingsEquals(CaptureSettings? a, CaptureSettings? b)
+    {
+        if (a is null && b is null)
+        {
+            return true;
+        }
+
+        if (a is null || b is null)
+        {
+            return false;
+        }
+
+        return a.Enabled == b.Enabled
+            && a.OutputDirectory == b.OutputDirectory
+            && a.DefaultRecordSeconds == b.DefaultRecordSeconds
+            && a.MaxRecordSeconds == b.MaxRecordSeconds
+            && a.IncludeCursor == b.IncludeCursor
+            && a.PreCaptureDelayMs == b.PreCaptureDelayMs;
+    }
+
     /// <summary>
     /// Extracts the "fastFlowLm" object from a JSON element and returns a normalized FastFlowLmSettings instance.
     /// </summary>
@@ -321,7 +354,7 @@ public sealed class LauncherSettingsStore
             return fallback;
         }
 
-        return NormalizeCapture(new CaptureSettings
+        var parsed = new CaptureSettings
         {
             Enabled = ReadBoolean(settings, "enabled", fallback.Enabled),
             OutputDirectory = ReadString(settings, "outputDirectory", fallback.OutputDirectory),
@@ -329,7 +362,8 @@ public sealed class LauncherSettingsStore
             MaxRecordSeconds = ReadInteger(settings, "maxRecordSeconds", fallback.MaxRecordSeconds),
             IncludeCursor = ReadBoolean(settings, "includeCursor", fallback.IncludeCursor),
             PreCaptureDelayMs = ReadInteger(settings, "preCaptureDelayMs", fallback.PreCaptureDelayMs),
-        });
+        };
+        return NormalizeCapture(parsed);
     }
 
     /// <summary>

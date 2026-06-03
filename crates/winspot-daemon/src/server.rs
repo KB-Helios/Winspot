@@ -669,20 +669,23 @@ fn handle_action(
         return completed;
     }
 
-    match record_usage(&action, now, config).map(|_| {
-        runtime.engine.record_usage(&action.result_id, now);
-        completed.message.clone()
-    }) {
-        Ok(message) => winspot_core::ActionCompleted {
-            action_id: action.action_id,
-            succeeded: true,
-            message,
-        },
-        Err(error) => winspot_core::ActionCompleted {
-            action_id: action.action_id,
-            succeeded: false,
-            message: error.to_string(),
-        },
+    let message = match record_usage(&action, now, config) {
+        Ok(_) => {
+            runtime.engine.record_usage(&action.result_id, now);
+            completed.message.clone()
+        }
+        Err(error) => {
+            eprintln!(
+                "winspot-daemon: action succeeded but usage logging failed: {error:?}"
+            );
+            format!("{} (usage logging failed)", completed.message)
+        }
+    };
+
+    winspot_core::ActionCompleted {
+        action_id: action.action_id,
+        succeeded: true,
+        message,
     }
 }
 
@@ -700,27 +703,37 @@ fn handle_capture_action(
         };
     };
 
-    match service.execute_result_id(&action.result_id) {
-        Ok(outcome) => match record_usage(&action, now, config).map(|_| {
-            runtime.engine.record_usage(&action.result_id, now);
-            format!("Saved capture to {}", outcome.output_path)
-        }) {
-            Ok(message) => winspot_core::ActionCompleted {
-                action_id: action.action_id,
-                succeeded: true,
-                message,
-            },
-            Err(error) => winspot_core::ActionCompleted {
-                action_id: action.action_id,
-                succeeded: false,
-                message: error.to_string(),
-            },
-        },
-        Err(error) => winspot_core::ActionCompleted {
-            action_id: action.action_id,
-            succeeded: false,
-            message: error.to_string(),
-        },
+    let service = service.clone();
+    let action_clone = action.clone();
+    let config_clone = config.clone();
+    let engine = runtime.engine.clone();
+    thread::spawn(move || {
+        match service.execute_result_id(&action_clone.result_id) {
+            Ok(outcome) => {
+                let mut message = format!("Saved capture to {}", outcome.output_path);
+                match record_usage(&action_clone, now, &config_clone) {
+                    Ok(_) => {
+                        engine.record_usage(&action_clone.result_id, now);
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "winspot-daemon: capture succeeded but usage logging failed: {error:?}"
+                        );
+                        message.push_str(" (usage logging failed)");
+                    }
+                }
+                eprintln!("winspot-daemon: {message}");
+            }
+            Err(error) => {
+                eprintln!("winspot-daemon: capture failed: {error:?}");
+            }
+        }
+    });
+
+    winspot_core::ActionCompleted {
+        action_id: action.action_id,
+        succeeded: true,
+        message: "Capture scheduled.".to_string(),
     }
 }
 

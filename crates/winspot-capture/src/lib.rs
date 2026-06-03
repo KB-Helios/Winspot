@@ -637,15 +637,17 @@ fn capture_with_windows_capture(
     match (command.mode, command.target) {
         (CaptureMode::Screenshot, CaptureTarget::Monitor(selection)) => {
             let monitor = monitor_from_selection(selection)?;
-            let mut duplication =
-                DxgiDuplicationApi::new(monitor).map_err(|error| anyhow!("{error}"))?;
-            let mut frame = duplication
-                .acquire_next_frame(1000)
-                .map_err(|error| anyhow!("{error}"))?;
-            frame
-                .save_as_image(output_path, ImageFormat::Png)
-                .map_err(|error| anyhow!("{error}"))?;
-            Ok(())
+            let settings_capture = Settings::new(
+                monitor,
+                cursor_setting(settings),
+                DrawBorderSettings::WithoutBorder,
+                SecondaryWindowSettings::Default,
+                MinimumUpdateIntervalSettings::Default,
+                DirtyRegionSettings::Default,
+                ColorFormat::Rgba8,
+                output_path.to_path_buf(),
+            );
+            ScreenshotHandler::start(settings_capture).map_err(|error| anyhow!("{error}"))
         }
         (CaptureMode::Screenshot, CaptureTarget::ForegroundWindow) => {
             let window = Window::foreground().map_err(|error| anyhow!("{error}"))?;

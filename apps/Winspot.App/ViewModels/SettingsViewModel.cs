@@ -410,7 +410,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         if (_captureEnabled && !CaptureNumbersAreValid())
         {
-            StatusMessage = "Capture numeric settings must be positive, within limits, and default duration must not exceed max duration.";
+            StatusMessage = SettingsStatusMessages.CaptureValidation;
+            return false;
+        }
+
+        if (!IsCaptureOutputDirectoryValid(_captureOutputDirectory))
+        {
+            StatusMessage = "Capture output directory path is invalid.";
             return false;
         }
 
@@ -616,6 +622,33 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return NamedKeys.Contains(trimmed);
     }
 
+    private static bool IsCaptureOutputDirectoryValid(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        try
+        {
+            var trimmed = value.Trim();
+            _ = Path.GetFullPath(trimmed);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+        catch (PathTooLongException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Create a FastFlowLmSettings instance from the view-model's FastFlowLM fields.
     /// </summary>
@@ -646,12 +679,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         var defaults = new CaptureSettings();
         var maxRecordSeconds = ParsePositiveInt(_captureMaxRecordSeconds, defaults.MaxRecordSeconds, maxValue: 300);
+        var trimmedDirectory = string.IsNullOrWhiteSpace(_captureOutputDirectory)
+            ? string.Empty
+            : _captureOutputDirectory.Trim();
         return new CaptureSettings
         {
             Enabled = _captureEnabled,
-            OutputDirectory = string.IsNullOrWhiteSpace(_captureOutputDirectory)
-                ? string.Empty
-                : _captureOutputDirectory.Trim(),
+            OutputDirectory = IsCaptureOutputDirectoryValid(trimmedDirectory)
+                ? trimmedDirectory
+                : string.Empty,
             DefaultRecordSeconds = Math.Min(
                 ParsePositiveInt(_captureDefaultRecordSeconds, defaults.DefaultRecordSeconds, maxValue: 300),
                 maxRecordSeconds),
