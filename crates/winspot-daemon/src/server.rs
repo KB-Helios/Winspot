@@ -1,17 +1,17 @@
 use std::{
     env,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::Context;
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::windows::named_pipe::{NamedPipeServer, ServerOptions},
-};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use winspot_actions::{ActionExecutor, ActionPolicy};
 
+#[cfg(windows)]
 use crate::pipe_security::PipeSecurity;
 use winspot_core::{
     ActionKind, BackendError, HelloAccepted, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
@@ -57,8 +57,8 @@ impl Default for PipeConfig {
 #[derive(Clone)]
 pub struct DaemonRuntime {
     pub engine: SearchEngine,
-    pub plugin_registry: Arc<PluginRegistry>,
-    pub plugin_validation_report: Arc<PluginValidationReport>,
+    pub plugin_registry: Arc<RwLock<PluginRegistry>>,
+    pub plugin_validation_report: Arc<RwLock<PluginValidationReport>>,
 }
 
 impl DaemonRuntime {
@@ -66,8 +66,8 @@ impl DaemonRuntime {
         let (registry, report) = PluginRegistry::with_built_ins_with_report();
         Self {
             engine,
-            plugin_registry: Arc::new(registry),
-            plugin_validation_report: Arc::new(report),
+            plugin_registry: Arc::new(RwLock::new(registry)),
+            plugin_validation_report: Arc::new(RwLock::new(report)),
         }
     }
 }
@@ -168,7 +168,7 @@ pub fn build_search_engine(config: &PipeConfig) -> anyhow::Result<SearchEngine> 
 /// never stop the daemon from starting.
 fn build_plugin_registry(
     plugins_dir: Option<&std::path::Path>,
-) -> (Arc<PluginRegistry>, Arc<PluginValidationReport>) {
+) -> (Arc<RwLock<PluginRegistry>>, Arc<RwLock<PluginValidationReport>>) {
     let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
     if let Some(dir) = plugins_dir
         && let Err(error) = registry
@@ -180,7 +180,7 @@ fn build_plugin_registry(
             dir.display()
         );
     }
-    (Arc::new(registry), Arc::new(report))
+    (Arc::new(RwLock::new(registry)), Arc::new(RwLock::new(report)))
 }
 
 fn current_plugin_validation_report(
@@ -188,13 +188,16 @@ fn current_plugin_validation_report(
     config: &PipeConfig,
 ) -> PluginValidationReport {
     let Some(dir) = config.plugins_dir.as_deref() else {
-        return runtime.plugin_validation_report.as_ref().clone();
+        return runtime.plugin_validation_report.read().unwrap().clone();
     };
 
     let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
     match registry.load_dir_into_with_report(dir) {
         Ok(user_report) => {
             report.extend(user_report);
+            // Update the live registry and report in the runtime
+            *runtime.plugin_registry.write().unwrap() = registry;
+            *runtime.plugin_validation_report.write().unwrap() = report.clone();
             report
         }
         Err(error) => {
@@ -202,7 +205,7 @@ fn current_plugin_validation_report(
                 "winspot-daemon: failed to rescan plugins directory {}: {error:?}",
                 dir.display()
             );
-            runtime.plugin_validation_report.as_ref().clone()
+            runtime.plugin_validation_report.read().unwrap().clone()
         }
     }
 }
@@ -440,6 +443,8 @@ fn handle_action(
     if action.primary_action == ActionKind::PluginCommand
         && let Err(error) = runtime
             .plugin_registry
+            .read()
+            .unwrap()
             .ensure_plugin_command_allowed(&action.result_id)
     {
         return winspot_core::ActionCompleted {
