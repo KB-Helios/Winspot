@@ -251,6 +251,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public bool IsValid => BuildModifiers().Count > 0 && IsKeyValid(_key) && FastFlowLmNumbersAreValid();
 
+    /// <summary>
+    /// Builds a LauncherSettings snapshot from the view-model's current state.
+    /// </summary>
+    /// <returns>A <see cref="LauncherSettings"/> populated with the view-model's hotkey, launch-on-startup and tray settings, motion and theme settings, and FastFlowLM configuration.</returns>
     public LauncherSettings BuildSettings() => new()
     {
         Hotkey = BuildBinding(),
@@ -262,6 +266,19 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         FastFlowLm = BuildFastFlowLmSettings(),
     };
 
+    /// <summary>
+    /// Validates current view-model settings and, if valid, persists them, applies startup registration, updates status, and raises the Saved event.
+    /// </summary>
+    /// <remarks>
+    /// Validation performed:
+    /// - Requires at least one hotkey modifier (Ctrl, Alt, Shift, or Win).
+    /// - Requires a valid hotkey key (single letter/digit or a named key such as Space or Enter).
+    /// - Requires FastFlowLM numeric fields to be positive whole numbers.
+    /// - Rejects hotkeys reserved by Windows.
+    /// On validation failure the method sets <see cref="StatusMessage"/> to an explanatory message and does not persist changes.
+    /// On success the method saves settings to the store, applies startup registration according to the saved setting, sets <see cref="StatusMessage"/> to "Saved.", and invokes the <see cref="Saved"/> event with the persisted settings.
+    /// </remarks>
+    /// <returns>`true` if settings were validated and saved successfully, `false` otherwise.</returns>
     public bool TrySave()
     {
         if (BuildModifiers().Count == 0)
@@ -330,6 +347,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Populates the view-model's backing fields from a persisted <see cref="LauncherSettings"/> snapshot.
+    /// </summary>
+    /// <param name="settings">The persisted settings to load from. Hotkey modifiers are mapped into the view-model's modifier booleans (treating "control"/"ctrl" and "win"/"windows" equivalently), the hotkey key is copied, startup/tray/theme/motion values are applied (when <see cref="LauncherSettings.ReduceMotion"/> is true the motion profile is set to <see cref="MotionProfile.Reduced"/>), and FastFlowLM numeric values are converted to invariant-culture strings for the corresponding view-model fields.</param>
     private void LoadFrom(LauncherSettings settings)
     {
         var modifiers = settings.Hotkey.Modifiers
@@ -355,6 +376,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _fastFlowLmMaxContextBytes = settings.FastFlowLm.MaxContextBytes.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// Constructs a HotkeyBinding that reflects the view-model's current key and modifier selection.
+    /// </summary>
+    /// <returns>A HotkeyBinding whose Key is the trimmed key string (or empty if none) and whose Modifiers are the current modifier list.</returns>
     private HotkeyBinding BuildBinding() => new()
     {
         Key = string.IsNullOrWhiteSpace(_key) ? string.Empty : _key.Trim(),
@@ -387,6 +412,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return modifiers;
     }
 
+    /// <summary>
+    /// Determines whether a user-entered key string represents a valid hotkey key name.
+    /// </summary>
+    /// <param name="key">The key text to validate (may be a single character or a named key).</param>
+    /// <returns>`true` if the input is a single ASCII letter A–Z or digit 0–9, or matches a recognized named key; `false` otherwise.</returns>
     private static bool IsKeyValid(string? key)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -404,6 +434,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return NamedKeys.Contains(trimmed);
     }
 
+    /// <summary>
+    /// Create a FastFlowLmSettings instance from the view-model's FastFlowLM fields.
+    /// </summary>
+    /// <returns>
+    /// A FastFlowLmSettings populated from the view-model: `Enabled` taken from the backing flag; `ModelTag` and `ExecutablePath` trimmed and replaced by defaults when empty; numeric fields parsed from their string representations using `ParsePositiveInt`, falling back to default values when parsing fails or values are invalid.
+    /// </returns>
     private FastFlowLmSettings BuildFastFlowLmSettings()
     {
         var defaults = new FastFlowLmSettings();
@@ -424,14 +460,24 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         };
     }
 
-    private bool FastFlowLmNumbersAreValid() =>
+    /// <summary>
+        /// Validates that all FastFlowLM numeric input fields contain positive integers and that the port is within the valid TCP range.
+        /// </summary>
+        /// <returns>`true` if the port, idle timeout, max context files, max file bytes, and max context bytes parse to integers greater than zero and the port is no greater than 65535; `false` otherwise.</returns>
+        private bool FastFlowLmNumbersAreValid() =>
         IsPositiveInt(_fastFlowLmPort, maxValue: 65535)
         && IsPositiveInt(_fastFlowLmIdleTimeoutSeconds)
         && IsPositiveInt(_fastFlowLmMaxContextFiles)
         && IsPositiveInt(_fastFlowLmMaxFileBytes)
         && IsPositiveInt(_fastFlowLmMaxContextBytes);
 
-    private static bool IsPositiveInt(string? value, int maxValue = int.MaxValue) =>
+    /// <summary>
+        /// Determines whether the provided string represents an integer greater than zero and not exceeding a specified maximum.
+        /// </summary>
+        /// <param name="value">The string to validate; may be null.</param>
+        /// <param name="maxValue">The inclusive upper bound for the parsed integer.</param>
+        /// <returns>`true` if the string parses to an integer > 0 and <= <paramref name="maxValue"/>, `false` otherwise.</returns>
+        private static bool IsPositiveInt(string? value, int maxValue = int.MaxValue) =>
         int.TryParse(
             value,
             System.Globalization.NumberStyles.None,
@@ -440,7 +486,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         && parsed > 0
         && parsed <= maxValue;
 
-    private static int ParsePositiveInt(string? value, int fallback, int maxValue = int.MaxValue) =>
+    /// <summary>
+            /// Parses a string as a positive integer within an inclusive upper bound, returning a fallback when the value is invalid or out of range.
+            /// </summary>
+            /// <param name="value">The input string to parse; may be null or empty.</param>
+            /// <param name="fallback">The value to return if parsing fails or the parsed number is not within the allowed range.</param>
+            /// <param name="maxValue">The inclusive maximum allowed value for the parsed integer.</param>
+            /// <returns>The parsed integer when it is greater than zero and less than or equal to <paramref name="maxValue"/>, otherwise <paramref name="fallback"/>.</returns>
+            private static int ParsePositiveInt(string? value, int fallback, int maxValue = int.MaxValue) =>
         int.TryParse(
             value,
             System.Globalization.NumberStyles.None,
@@ -451,6 +504,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             ? parsed
             : fallback;
 
+    /// <summary>
+    /// Sets a boolean backing field for a hotkey modifier and, when the value changes, raises property-changed notifications for the modifier plus the derived HotkeyPreview and DiagnosticsText properties.
+    /// </summary>
+    /// <param name="field">Reference to the backing boolean field for the modifier (e.g., _useControl).</param>
+    /// <param name="value">New boolean value to assign to the backing field.</param>
+    /// <param name="propertyName">Name of the property being set; provided automatically by the caller via CallerMemberName if omitted.</param>
     private void SetChord(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
     {
         if (SetField(ref field, value, propertyName))

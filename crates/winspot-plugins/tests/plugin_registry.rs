@@ -130,6 +130,19 @@ fn validate_rejects_empty_name_and_duplicate_capabilities() {
     ));
 }
 
+/// Verifies that the registry includes all built-in plugin manifests.
+///
+/// This test constructs a registry with built-in plugins and asserts that the
+/// expected built-in plugin IDs are present (`calculator`, `terminal`,
+/// `clipboard`, `unit-conversion`, and `fastflowlm`).
+///
+/// # Examples
+///
+/// ```
+/// let registry = PluginRegistry::with_built_ins();
+/// let ids: Vec<&str> = registry.manifests().map(|m| m.id.as_str()).collect();
+/// assert!(ids.contains(&"calculator"));
+/// ```
 #[test]
 fn with_built_ins_registers_all_built_in_plugins() {
     let registry = PluginRegistry::with_built_ins();
@@ -146,6 +159,15 @@ fn with_built_ins_registers_all_built_in_plugins() {
     }
 }
 
+/// Verifies that the built-in `fastflowlm` plugin declares an executable action and is authorized.
+///
+/// # Examples
+///
+/// ```
+/// let registry = PluginRegistry::with_built_ins();
+/// assert!(registry.plugin_has_executable_action("fastflowlm"));
+/// assert!(registry.ensure_plugin_command_allowed("plugin:fastflowlm").is_ok());
+/// ```
 #[test]
 fn registry_authorizes_fastflowlm_builtin_plugin() {
     let registry = PluginRegistry::with_built_ins();
@@ -158,6 +180,26 @@ fn registry_authorizes_fastflowlm_builtin_plugin() {
     );
 }
 
+/// Merges user-provided plugin manifests from a directory into a registry that already contains built-in plugins and verifies both sources are available.
+///
+/// # Examples
+///
+/// ```
+/// let root = unique_temp_dir("merge");
+/// std::fs::write(
+///     root.join("custom.json"),
+///     r#"{"id":"custom","name":"Custom Plugin","capabilities":[],"enabled":true}"#,
+/// )
+/// .expect("write manifest");
+///
+/// let mut registry = PluginRegistry::with_built_ins();
+/// registry.load_dir_into(&root).expect("merge user manifests");
+///
+/// assert_eq!(registry.internal_results("Calculator")[0].title, "Calculator");
+/// assert_eq!(registry.internal_results("Custom")[0].title, "Custom Plugin");
+///
+/// std::fs::remove_dir_all(root).expect("cleanup");
+/// ```
 #[test]
 fn load_dir_into_merges_user_manifests_with_built_ins() {
     let root = unique_temp_dir("merge");

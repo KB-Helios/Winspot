@@ -68,6 +68,18 @@ pub struct DaemonRuntime {
 }
 
 impl DaemonRuntime {
+    /// Creates a `DaemonRuntime` from an existing `SearchEngine`, registering built-in plugins and producing a validation report.
+    ///
+    /// The returned runtime wraps the provided `engine`, initializes a `PluginRegistry` populated with built-in providers and its `PluginValidationReport`, and leaves `fastflowlm_service` disabled (`None`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Construct or obtain a SearchEngine instance first (example assumes `Default` is available).
+    /// let engine = SearchEngine::default();
+    /// let runtime = DaemonRuntime::from_engine(engine);
+    /// assert!(runtime.fastflowlm_service.is_none());
+    /// ```
     pub fn from_engine(engine: SearchEngine) -> Self {
         let (registry, report) = PluginRegistry::with_built_ins_with_report();
         Self {
@@ -138,6 +150,23 @@ fn create_secured_pipe(name: &str, first_instance: bool) -> std::io::Result<Name
     }
 }
 
+/// Builds the daemon runtime used by the server.
+///
+/// The runtime contains a configured `SearchEngine`, a shared plugin registry and its
+/// validation report, and an optional `FastFlowLmService` depending on configuration and
+/// available settings. Usage history is loaded from `config.usage_log_path` when present;
+/// failures to load the usage log are returned as errors.
+///
+/// # Returns
+///
+/// `Ok(DaemonRuntime)` with the assembled runtime on success, or an error if usage loading fails.
+///
+/// # Examples
+///
+/// ```
+/// let cfg = PipeConfig::default();
+/// let _runtime = build_daemon_runtime(&cfg).unwrap();
+/// ```
 pub fn build_daemon_runtime(config: &PipeConfig) -> anyhow::Result<DaemonRuntime> {
     let usage = match &config.usage_log_path {
         Some(path) => UsageStore::new(path.clone())
@@ -196,6 +225,34 @@ fn build_plugin_registry(
     (Arc::new(registry), Arc::new(report))
 }
 
+/// Serves a single named-pipe connection using a runtime built from the given engine and config.
+///
+/// This constructs a `DaemonRuntime` (including a plugin registry, validation report, and an
+/// optional FastFlowLM service) from `config` and `engine`, then accepts and handles one client
+/// connection on the configured pipe. The function returns when that connection handling completes.
+///
+/// # Parameters
+///
+/// - `config`: Pipe configuration used to build plugin registry, usage logging, and pipe options.
+/// - `engine`: Search engine instance to use for request handling; it will be cloned into the runtime.
+///
+/// # Returns
+///
+/// `Ok(())` if the connection was served successfully, or an error with context if setup or serving fails.
+///
+/// # Examples
+///
+/// ```
+/// # use winspot_daemon::{serve_pipe_once, PipeConfig};
+/// # use winspot_core::SearchEngine;
+/// # fn main() {
+/// let rt = tokio::runtime::Runtime::new().unwrap();
+/// let engine = SearchEngine::default();
+/// let config = PipeConfig::default();
+/// let res = rt.block_on(async { serve_pipe_once(config, &engine).await });
+/// assert!(res.is_ok() || res.is_err()); // illustrate call; real invocation runs the daemon once
+/// # }
+/// ```
 pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyhow::Result<()> {
     let (plugin_registry, plugin_validation_report) =
         build_plugin_registry(config.plugins_dir.as_deref());
@@ -399,6 +456,25 @@ async fn write_envelope(
     Ok(())
 }
 
+/// Builds a non-final preview chunk that indicates the preview is loading.
+///
+/// The returned `PreviewChunk` uses the incoming preview's `preview_id` and result
+/// title, sets the body to `"Loading preview"`, and marks `is_final` as `false`.
+///
+/// # Examples
+///
+/// ```ignore
+/// let request = PreviewRequested {
+///     preview_id: "preview-1".to_string(),
+///     result: SearchResult { title: "Example".to_string(), ..Default::default() },
+///     ..Default::default()
+/// };
+/// let chunk = build_preview_chunk(&request);
+/// assert_eq!(chunk.preview_id, "preview-1");
+/// assert_eq!(chunk.title, "Example");
+/// assert_eq!(chunk.body, "Loading preview");
+/// assert!(!chunk.is_final);
+/// ```
 fn build_preview_chunk(preview: &PreviewRequested) -> PreviewChunk {
     PreviewChunk {
         preview_id: preview.preview_id.clone(),
@@ -408,6 +484,28 @@ fn build_preview_chunk(preview: &PreviewRequested) -> PreviewChunk {
     }
 }
 
+/// Builds a final `PreviewReady` for a preview request.
+///
+/// If the requested result is the FastFlowLM sentinel (`FASTFLOWLM_RESULT_ID`), returns a
+/// final preview that instructs the client to press Enter to invoke FastFlowLM. Otherwise,
+/// produces a final preview using the default preview provider.
+///
+/// # Examples
+///
+/// ```
+/// // Construct a minimal PreviewRequested for demonstration; real code will provide
+/// // a complete SearchResult value.
+/// let preview = PreviewRequested {
+///     preview_id: "example".to_string(),
+///     result: SearchResult {
+///         id: "non-fastflowlm".to_string(),
+///         title: "Example".to_string(),
+///         ..Default::default()
+///     },
+/// };
+/// let ready = build_preview(preview);
+/// assert!(ready.is_final);
+/// ```
 fn build_preview(preview: PreviewRequested) -> PreviewReady {
     if preview.result.id == FASTFLOWLM_RESULT_ID {
         return PreviewReady {
@@ -427,6 +525,32 @@ fn build_preview(preview: PreviewRequested) -> PreviewReady {
     }
 }
 
+/// Execute an action request: enforce plugin permissions, handle FastFlowLM plugin commands,
+/// execute the action locally when allowed, and record usage if configured.
+///
+/// If the action is a `PluginCommand`, this first ensures the plugin command is allowed by the
+/// daemon's plugin registry and returns a failing `ActionCompleted` if not. If the action targets
+/// the `FASTFLOWLM_RESULT_ID`, it is routed to the FastFlowLM-specific handler. Otherwise the
+/// action is executed locally; when execution succeeds the function attempts to record usage and
+/// updates the engine's usage counters. Any failure during execution or usage recording is
+/// reflected in the returned `ActionCompleted`.
+///
+/// # Returns
+///
+/// `ActionCompleted` describing whether the action succeeded and containing a human-readable
+/// message with either the result (on success) or an error description (on failure).
+///
+/// # Examples
+///
+/// ```no_run
+/// use winspot_daemon::{handle_action, DaemonRuntime, PipeConfig};
+/// use winspot_core::ActionRequested;
+///
+/// // Construct `action`, `runtime`, and `config` appropriate for your application,
+/// // then call:
+/// // let completed = handle_action(action, &runtime, &config);
+/// // assert!(completed.succeeded || !completed.succeeded);
+/// ```
 fn handle_action(
     action: winspot_core::ActionRequested,
     runtime: &DaemonRuntime,
@@ -473,6 +597,26 @@ fn handle_action(
     }
 }
 
+/// Execute a FastFlowLM-backed plugin action by asking the FastFlowLM service for an answer
+/// and recording usage if the request succeeds.
+///
+/// If the daemon's FastFlowLM service is disabled, returns an `ActionCompleted` with
+/// `succeeded = false` and an explanatory message. If the service answers successfully,
+/// the function attempts to record usage; on success it returns `succeeded = true` with
+/// the service's answer as `message`. Any error from the service or from usage recording
+/// is returned as `succeeded = false` with the error string as `message`.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Given valid `action`, `runtime`, `config`, and `now` values:
+/// let completed = handle_fastflowlm_action(action, &runtime, &config, now);
+/// if completed.succeeded {
+///     println!("FastFlowLM answer: {}", completed.message);
+/// } else {
+///     eprintln!("FastFlowLM action failed: {}", completed.message);
+/// }
+/// ```
 fn handle_fastflowlm_action(
     action: winspot_core::ActionRequested,
     runtime: &DaemonRuntime,
@@ -511,6 +655,33 @@ fn handle_fastflowlm_action(
     }
 }
 
+/// Records a usage event for the given action to the configured usage log.
+///
+/// If `config.usage_log_path` is `None`, this function does nothing and returns `Ok(())`.
+///
+/// # Parameters
+///
+/// - `action`: the action whose `result_id` will be recorded.
+/// - `now_unix_seconds`: timestamp (seconds since UNIX epoch) to attach to the usage event.
+/// - `config`: daemon pipe configuration; the `usage_log_path` field controls whether events are persisted.
+///
+/// # Returns
+///
+/// `Ok(())` on success, `Err` if writing the usage event fails (the error is annotated with the `result_id`).
+///
+/// # Examples
+///
+/// ```
+/// let action = winspot_core::ActionRequested {
+///     result_id: "example".to_string(),
+///     title: "t".to_string(),
+///     primary_action: winspot_core::ActionKind::Open,
+///     ..Default::default()
+/// };
+/// let config = PipeConfig { usage_log_path: None, ..Default::default() };
+/// // With no usage_log_path this is a no-op and returns Ok.
+/// assert!(record_usage(&action, 1_700_000_000, &config).is_ok());
+/// ```
 fn record_usage(
     action: &winspot_core::ActionRequested,
     now_unix_seconds: u64,
@@ -551,9 +722,25 @@ fn default_usage_log_path() -> Option<PathBuf> {
         .map(|local_app_data| PathBuf::from(local_app_data).join("Winspot\\usage-events.jsonl"))
 }
 
-/// Resolves the directory scanned for user plugin manifests, mirroring
-/// [`default_usage_log_path`]: a portable install keeps plugins beside the
-/// executable, otherwise they live under `%LOCALAPPDATA%\Winspot\plugins`.
+/// Determines the default directory used to scan for user plugin manifests.
+///
+/// If the executable's parent directory contains a `Winspot.portable` marker file,
+/// returns that parent's `plugins` subdirectory (portable layout). Otherwise,
+/// returns `%LOCALAPPDATA%\Winspot\plugins` when `LOCALAPPDATA` is set.
+///
+/// # Returns
+///
+/// `Some(PathBuf)` with the resolved plugins directory, or `None` if `LOCALAPPDATA` is not available.
+///
+/// # Examples
+///
+/// ```
+/// // Use the default plugins directory if available.
+/// if let Some(dir) = default_plugins_dir() {
+///     let plugin_manifest = dir.join("my_plugin.manifest.json");
+///     println!("{}", plugin_manifest.display());
+/// }
+/// ```
 fn default_plugins_dir() -> Option<PathBuf> {
     if let Ok(executable) = env::current_exe()
         && let Some(directory) = executable.parent()
@@ -567,6 +754,16 @@ fn default_plugins_dir() -> Option<PathBuf> {
         .map(|local_app_data| PathBuf::from(local_app_data).join("Winspot\\plugins"))
 }
 
+/// Load FastFlowLM settings from the default settings path, falling back to defaults on missing path or read errors.
+///
+/// If `default_settings_path()` returns `None`, this returns `FastFlowLmSettings::default()`. If a path is present but
+/// `load_settings_from_path` fails, an error is printed to stderr and `FastFlowLmSettings::default()` is returned.
+///
+/// # Examples
+///
+/// ```
+/// let _settings = load_fastflowlm_settings();
+/// ```
 fn load_fastflowlm_settings() -> FastFlowLmSettings {
     let Some(path) = default_settings_path() else {
         return FastFlowLmSettings::default();
@@ -584,6 +781,23 @@ fn load_fastflowlm_settings() -> FastFlowLmSettings {
     }
 }
 
+/// Initializes a FastFlowLM service if enabled and an index store can be acquired.
+///
+/// Attempts to open the default index path; on failure it falls back to an in-memory index.
+/// If `settings.enabled` is false or the index cannot be initialized, no service is created.
+///
+/// # Returns
+///
+/// `Some(FastFlowLmService)` when the service was successfully initialized, `None` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// let settings = FastFlowLmSettings::default();
+/// // Default settings are typically disabled, so this will usually return `None`.
+/// let svc = build_fastflowlm_service(settings);
+/// assert!(svc.is_none());
+/// ```
 fn build_fastflowlm_service(settings: FastFlowLmSettings) -> Option<FastFlowLmService> {
     if !settings.enabled {
         return None;
@@ -609,6 +823,22 @@ fn build_fastflowlm_service(settings: FastFlowLmSettings) -> Option<FastFlowLmSe
     }
 }
 
+/// Get the current time as seconds since the Unix epoch.
+///
+/// If the system clock is before the Unix epoch, this returns `0`.
+///
+/// # Returns
+///
+/// `u64` seconds elapsed since `UNIX_EPOCH`; `0` if the system time is earlier than the epoch.
+///
+/// # Examples
+///
+/// ```
+/// let t1 = current_unix_seconds();
+/// let t2 = current_unix_seconds();
+/// // time should be non-decreasing between two close calls
+/// assert!(t2 >= t1);
+/// ```
 fn current_unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -770,6 +1000,25 @@ mod tests {
         assert!(completed.message.contains("failed to run"));
     }
 
+    /// Create a unique temporary directory for tests.
+    ///
+    /// The directory name is derived from `label` and the current process id. If a directory already
+    /// exists at the computed path it is removed and a fresh directory is created.
+    ///
+    /// # Parameters
+    ///
+    /// - `label`: Short label used as part of the directory name.
+    ///
+    /// # Returns
+    ///
+    /// A `PathBuf` pointing to the created directory.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let dir = unique_test_dir("my-test");
+    /// assert!(dir.exists());
+    /// ```
     fn unique_test_dir(label: &str) -> std::path::PathBuf {
         let root = std::env::temp_dir().join(format!("{label}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -777,6 +1026,39 @@ mod tests {
         root
     }
 
+    /// Reads a complete HTTP request from the provided `TcpStream` and returns the raw request
+    /// (headers and body) as a `String`.
+    ///
+    /// This function:
+    /// - Reads from the stream until it detects the end of the HTTP header section (`\r\n\r\n`).
+    /// - Parses the `Content-Length` header (case-insensitive) if present and continues reading
+    ///   until that many bytes of body have been received.
+    /// - Returns the concatenation of the headers and body. Invalid UTF-8 sequences are replaced
+    ///   using `String::from_utf8_lossy`.
+    ///
+    /// The function will panic if the peer closes the connection before headers or body are fully
+    /// received and will propagate I/O errors via `expect` messages used internally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::net::{TcpListener, TcpStream};
+    /// use std::thread;
+    ///
+    /// // spawn a server that sends a minimal HTTP request to a connecting client
+    /// let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    /// let addr = listener.local_addr().unwrap();
+    /// thread::spawn(move || {
+    ///     let (mut sock, _) = listener.accept().unwrap();
+    ///     let req = b"POST / HTTP/1.1\r\nHost: example\r\nContent-Length: 5\r\n\r\nhello";
+    ///     sock.write_all(req).unwrap();
+    /// });
+    ///
+    /// let mut stream = TcpStream::connect(addr).unwrap();
+    /// let raw = read_http_request(&mut stream);
+    /// assert!(raw.contains("Content-Length: 5"));
+    /// assert!(raw.ends_with("hello"));
+    /// ```
     fn read_http_request(stream: &mut TcpStream) -> String {
         let mut bytes = Vec::new();
         let mut buffer = [0u8; 512];
@@ -809,10 +1091,54 @@ mod tests {
         String::from_utf8_lossy(&bytes).to_string()
     }
 
+    /// Finds the byte index where an HTTP-style header section ends (`"\r\n\r\n"`).
+    ///
+    /// Scans the provided byte slice for the first occurrence of the four-byte sequence `\r\n\r\n` and returns the index of its first byte if found, or `None` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(find_header_end(b"foo\r\n\r\nbar"), Some(3));
+    /// assert_eq!(find_header_end(b"no delimiter here"), None);
+    /// ```
     fn find_header_end(bytes: &[u8]) -> Option<usize> {
         bytes.windows(4).position(|window| window == b"\r\n\r\n")
     }
 
+    /// Writes a simple HTTP/1.1 200 response with JSON body to the given TCP stream and closes the connection.
+    ///
+    /// # Panics
+    ///
+    /// Panics if writing to the stream fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::net::{TcpListener, TcpStream};
+    /// use std::io::{Read, Write};
+    /// use std::thread;
+    ///
+    /// // Start a listener and accept one connection, then read the response.
+    /// let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    /// let addr = listener.local_addr().unwrap();
+    ///
+    /// let handle = thread::spawn(move || {
+    ///     let (mut socket, _) = listener.accept().unwrap();
+    ///     let mut buf = String::new();
+    ///     socket.read_to_string(&mut buf).unwrap();
+    ///     buf
+    /// });
+    ///
+    /// let mut client = TcpStream::connect(addr).unwrap();
+    /// // Call the function under test (assumes it's visible in scope)
+    /// write_json_response(&mut client, r#"{"ok":true}"#);
+    ///
+    /// // The server thread will read the raw HTTP response text.
+    /// let resp = handle.join().unwrap();
+    /// assert!(resp.contains("HTTP/1.1 200 OK"));
+    /// assert!(resp.contains(r#"Content-Type: application/json"#));
+    /// assert!(resp.contains(r#"{"ok":true}"#));
+    /// ```
     fn write_json_response(stream: &mut TcpStream, body: &str) {
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",

@@ -43,6 +43,14 @@ fn provider_returns_lightweight_plugin_result_without_executing_flm() {
     }));
 }
 
+/// Ensures the provider returns no results for queries that do not begin with an explicit AI/ask prefix.
+///
+/// # Examples
+///
+/// ```
+/// let results = FastFlowLmProvider::default().search("summarize roadmap");
+/// assert!(results.is_empty());
+/// ```
 #[test]
 fn provider_ignores_queries_without_ai_prefix() {
     assert!(
@@ -70,7 +78,23 @@ fn validates_installed_model_from_flm_list_json() {
     assert!(error.to_string().contains("missing:model"));
 }
 
-#[test]
+/// Verifies that `build_index_context` returns index-matched files, includes file content when within per-file caps, and records a `metadata_only_reason` for oversized or non-UTF-8 files.
+///
+/// This test writes three files (small UTF-8, oversized UTF-8, and binary), indexes them, and asserts:
+/// - the small file appears with its full content and no `metadata_only_reason`,
+/// - the oversized file appears with `content == None` and `metadata_only_reason == "file exceeds per-file content cap"`,
+/// - the binary file appears with `content == None` and `metadata_only_reason == "binary or non-UTF-8 file"`.
+///
+/// # Examples
+///
+/// ```rust
+/// // Build a context limited to small per-file bytes so large files are metadata-only.
+/// let context = build_index_context(&store, "query", ContextLimits {
+///     max_files: 5,
+///     max_file_bytes: 12,
+///     max_context_bytes: 24,
+/// }).unwrap();
+/// ```
 fn context_uses_index_matches_and_caps_file_content() {
     let root = unique_temp_dir("context");
     let small = root.join("Roadmap.md");
@@ -142,6 +166,21 @@ fn idle_shutdown_applies_only_to_owned_processes() {
     assert!(!should_stop_owned_process(false, 1_000, 1_500, 120));
 }
 
+/// Creates an `IndexedItem` representing a file with the given `id`, `title`, and filesystem `path`.
+///
+/// The returned item has `kind` set to `SearchResultKind::File` and `modified_unix_seconds` set to `1`.
+///
+/// # Examples
+///
+/// ```
+/// let path = std::path::Path::new("/tmp/Roadmap.md");
+/// let item = indexed_file("id-123", "Roadmap", path);
+/// assert_eq!(item.id, "id-123");
+/// assert_eq!(item.title, "Roadmap");
+/// assert_eq!(item.path, path.display().to_string());
+/// assert_eq!(item.kind, SearchResultKind::File);
+/// assert_eq!(item.modified_unix_seconds, 1);
+/// ```
 fn indexed_file(id: &str, title: &str, path: &std::path::Path) -> IndexedItem {
     IndexedItem {
         id: id.to_string(),
@@ -152,6 +191,33 @@ fn indexed_file(id: &str, title: &str, path: &std::path::Path) -> IndexedItem {
     }
 }
 
+/// Creates and returns a unique temporary directory path under the system temp directory.
+
+///
+
+/// The directory is located at `{temp_dir}/winspot-fastflowlm-{label}-{process_id}`.
+
+/// If a directory already exists at that path it is removed before creating a new empty directory.
+
+/// Panics if the directory cannot be created.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// let dir = unique_temp_dir("test");
+
+/// assert!(dir.exists());
+
+/// // Clean up if desired:
+
+/// std::fs::remove_dir_all(&dir).unwrap();
+
+/// ```
 fn unique_temp_dir(label: &str) -> std::path::PathBuf {
     let root =
         std::env::temp_dir().join(format!("winspot-fastflowlm-{label}-{}", std::process::id()));

@@ -58,6 +58,18 @@ pub struct FastFlowLmSettings {
 }
 
 impl Default for FastFlowLmSettings {
+    /// Returns the default FastFlowLmSettings used when no configuration is provided.
+    ///
+    /// The defaults enable the integration and set the model tag, executable path, port,
+    /// idle timeout, and context size limits to sensible module-level constants.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let s = crate::FastFlowLmSettings::default();
+    /// assert!(s.enabled);
+    /// assert_eq!(s.model_tag, crate::DEFAULT_MODEL_TAG);
+    /// ```
     fn default() -> Self {
         Self {
             enabled: true,
@@ -73,6 +85,28 @@ impl Default for FastFlowLmSettings {
 }
 
 impl FastFlowLmSettings {
+    /// Normalize settings by trimming string fields and substituting defaults for empty or zero values.
+    ///
+    /// Trims whitespace from `model_tag` and `executable_path`; if either becomes empty after trimming it is replaced with the corresponding default. For numeric configuration fields (`port`, `idle_timeout_seconds`, `max_context_files`, `max_file_bytes`, `max_context_bytes`), a value of `0` is replaced with the corresponding default.
+    ///
+    /// # Returns
+    ///
+    /// A `FastFlowLmSettings` value with normalized string and numeric fields.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let s = FastFlowLmSettings {
+    ///     model_tag: "  my-model  ".into(),
+    ///     executable_path: "  /usr/bin/flm  ".into(),
+    ///     port: 0,
+    ///     ..Default::default()
+    /// }.normalized();
+    ///
+    /// assert_eq!(s.model_tag, "my-model");
+    /// assert_eq!(s.executable_path, "/usr/bin/flm");
+    /// assert_ne!(s.port, 0);
+    /// ```
     pub fn normalized(mut self) -> Self {
         let defaults = Self::default();
         if self.model_tag.trim().is_empty() {
@@ -103,6 +137,20 @@ impl FastFlowLmSettings {
         self
     }
 
+    /// Returns the configured context limits for index-derived prompts.
+    ///
+    /// The resulting `ContextLimits` reflects the service's `max_context_files`,
+    /// `max_file_bytes`, and `max_context_bytes` settings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let settings = FastFlowLmSettings::default();
+    /// let limits = settings.context_limits();
+    /// assert_eq!(limits.max_files, settings.max_context_files);
+    /// assert_eq!(limits.max_file_bytes, settings.max_file_bytes);
+    /// assert_eq!(limits.max_context_bytes, settings.max_context_bytes);
+    /// ```
     pub fn context_limits(&self) -> ContextLimits {
         ContextLimits {
             max_files: self.max_context_files,
@@ -120,6 +168,16 @@ pub struct ContextLimits {
 }
 
 impl Default for ContextLimits {
+    /// Create `ContextLimits` populated with the module's default caps.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let limits = ContextLimits::default();
+    /// assert_eq!(limits.max_files, DEFAULT_MAX_CONTEXT_FILES);
+    /// assert_eq!(limits.max_file_bytes, DEFAULT_MAX_FILE_BYTES);
+    /// assert_eq!(limits.max_context_bytes, DEFAULT_MAX_CONTEXT_BYTES);
+    /// ```
     fn default() -> Self {
         Self {
             max_files: DEFAULT_MAX_CONTEXT_FILES,
@@ -149,6 +207,26 @@ pub struct ContextEntry {
 pub struct FastFlowLmProvider;
 
 impl DynamicSearchProvider for FastFlowLmProvider {
+    /// Converts a launcher query into a FastFlowLM plugin search result when the query is an invocation prompt.
+    ///
+    /// If the query begins with a recognized invocation prefix (for example "ai " or "ask "), the prompt
+    /// portion is extracted and returned as a single `SearchResult` that triggers the FastFlowLM plugin.
+    /// Otherwise, an empty vector is returned.
+    ///
+    /// # Returns
+    ///
+    /// A single-element `Vec<SearchResult>` containing a plugin result with the extracted prompt when the
+    /// query targets FastFlowLM, or an empty `Vec` if the query is not a FastFlowLM invocation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Construct the provider (type shown for clarity; actual construction may vary).
+    /// let provider = FastFlowLmProvider;
+    /// let results = provider.search("ask Tell me a short joke");
+    /// assert_eq!(results.len(), 1);
+    /// assert_eq!(results[0].title, "Tell me a short joke");
+    /// ```
     fn search(&self, query: &str) -> Vec<SearchResult> {
         let Some(prompt) = parse_fastflowlm_prompt(query) else {
             return Vec::new();
@@ -181,6 +259,33 @@ pub struct FastFlowLmService {
 }
 
 impl FastFlowLmService {
+    /// Create a new FastFlowLmService with normalized settings and a shared index store.
+    
+    ///
+    
+    /// The provided `settings` are normalized before use; an internal `FastFlowLmManager` is
+    
+    /// initialized from those normalized settings. The `index_store` is wrapped in a
+    
+    /// thread-safe `Arc<Mutex<_>>` for shared access by the service.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// let settings = FastFlowLmSettings::default();
+    
+    /// let index_store = IndexStore::default();
+    
+    /// let svc = FastFlowLmService::new(settings, index_store);
+    
+    /// assert!(svc.settings.model_tag.len() > 0);
+    
+    /// ```
     pub fn new(settings: FastFlowLmSettings, index_store: IndexStore) -> Self {
         let settings = settings.normalized();
         Self {
@@ -190,6 +295,30 @@ impl FastFlowLmService {
         }
     }
 
+    /// Ask the configured FastFlowLM model a question using launcher index context.
+    ///
+    /// Builds an index-derived context for the trimmed `question` and forwards the request to the FastFlowLM manager, returning the model's answer.
+    ///
+    /// # Returns
+    ///
+    /// The model's answer as a `String`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - the FastFlowLM integration is disabled in the settings,
+    /// - the trimmed `question` is empty,
+    /// - the launcher index is unavailable or locked,
+    /// - or any error occurs while building context or communicating with the model.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Construct and use a FastFlowLmService (construction omitted).
+    /// let svc = /* FastFlowLmService::new(...) */;
+    /// let answer = svc.ask("Summarize the repository README.").unwrap();
+    /// println!("{}", answer);
+    /// ```
     pub fn ask(&self, question: &str) -> anyhow::Result<String> {
         if !self.settings.enabled {
             anyhow::bail!("FastFlowLM integration is disabled");
@@ -229,6 +358,17 @@ struct ProcessStateInner {
 }
 
 impl FastFlowLmManager {
+    /// Creates a new `FastFlowLmManager` with normalized settings and an initialized process state.
+    ///
+    /// The returned manager holds a cloned, normalized copy of `settings` and a shared `ProcessState`
+    /// with default `ProcessStateInner` and a `Condvar` used by the idle reaper.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mgr = FastFlowLmManager::new(FastFlowLmSettings::default());
+    /// assert!(mgr.settings.enabled);
+    /// ```
     pub fn new(settings: FastFlowLmSettings) -> Self {
         Self {
             settings: settings.normalized(),
@@ -239,6 +379,22 @@ impl FastFlowLmManager {
         }
     }
 
+    /// Ask the configured FastFlowLM model a question, providing index-derived context to inform the response.
+    ///
+    /// The method ensures the requested model is installed, starts or verifies a local FastFlowLM server if needed, sends the assembled chat request (including the provided context), and updates the manager's idle timestamp.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assume `manager` is a properly constructed `FastFlowLmManager`
+    /// // and `context` is a `ContextBundle` built from the index.
+    /// let answer = manager.ask("Summarize the following files", &context).unwrap();
+    /// assert!(!answer.trim().is_empty());
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// The model's response text on success.
     pub fn ask(&self, question: &str, context: &ContextBundle) -> anyhow::Result<String> {
         validate_installed_model(&self.settings)?;
         self.ensure_server()?;
@@ -249,6 +405,28 @@ impl FastFlowLmManager {
         Ok(answer)
     }
 
+    /// Starts a local FastFlowLM server if one is not already healthy and waits for it to become ready.
+    ///
+    /// Attempts a HTTP health check first; if the check fails, this will stop any previously
+    /// owned process, spawn the configured FastFlowLM executable with serve arguments, record
+    /// ownership, start the idle reaper, and poll the server until it responds or the startup
+    /// timeout elapses.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the server is already healthy or was started and became ready; `Err` if the
+    /// executable could not be spawned or the server did not become ready before the startup timeout.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use winspot_fastflowlm::{FastFlowLmManager, FastFlowLmSettings};
+    ///
+    /// let settings = FastFlowLmSettings::default();
+    /// let manager = FastFlowLmManager::new(settings);
+    /// // This may spawn the FastFlowLM process and wait for it to become healthy.
+    /// let _ = manager.ensure_server();
+    /// ```
     fn ensure_server(&self) -> anyhow::Result<()> {
         if health_check(&self.settings).is_ok() {
             return Ok(());
@@ -308,6 +486,18 @@ impl FastFlowLmManager {
         }
     }
 
+    /// Stops and clears any child server process owned by this manager.
+    ///
+    /// If a child process is present, it is sent a kill signal and waited on; the manager's
+    /// ownership is then cleared and waiting threads are notified via the condition variable.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Obtain a FastFlowLmManager instance (omitted).
+    /// // Calling this will terminate and forget any process the manager started.
+    /// manager.stop_stale_owned_process();
+    /// ```
     fn stop_stale_owned_process(&self) {
         let Ok(mut state) = self.state.inner.lock() else {
             return;
@@ -319,6 +509,17 @@ impl FastFlowLmManager {
         self.state.idle_changed.notify_all();
     }
 
+    /// Updates the manager's last-used timestamp to the current time and notifies the idle reaper.
+    ///
+    /// This marks the process as recently used so the idle reaper will delay stopping it.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Assume `manager` is a `FastFlowLmManager`.
+    /// // Calling `touch_used()` records activity and wakes any waiting reaper thread.
+    /// manager.touch_used();
+    /// ```
     fn touch_used(&self) {
         if let Ok(mut state) = self.state.inner.lock() {
             state.last_used_unix_seconds = current_unix_seconds();
@@ -326,6 +527,19 @@ impl FastFlowLmManager {
         }
     }
 
+    /// Starts a background thread that monitors the owned FastFlowLM process and stops it after the configured idle timeout.
+    ///
+    /// The reaper will be started only once while no other reaper is running. The thread:
+    /// - exits if there is no owned child process,
+    /// - kills and waits for the child process when the idle timeout is exceeded,
+    /// - otherwise sleeps on a condition variable and wakes when activity is recorded or the timeout elapses.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let mgr = FastFlowLmManager::new(FastFlowLmSettings::default());
+    /// mgr.start_idle_reaper();
+    /// ```
     fn start_idle_reaper(&self) {
         let state = Arc::clone(&self.state);
         let idle_timeout_seconds = self.settings.idle_timeout_seconds;
@@ -380,6 +594,21 @@ impl FastFlowLmManager {
     }
 }
 
+/// Extracts a prompt following an `ai` or `ask` prefix.
+///
+/// The function recognizes the case-insensitive prefixes `"ai "` and `"ask "` at the
+/// start of `query`, trims surrounding whitespace, and returns the remainder as a
+/// `&str` if it is non-empty. Returns `None` if no recognized prefix is present or
+/// the extracted prompt is empty after trimming.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(parse_fastflowlm_prompt("ai Hello, world!"), Some("Hello, world!"));
+/// assert_eq!(parse_fastflowlm_prompt("Ask   What is Rust?  "), Some("What is Rust?"));
+/// assert_eq!(parse_fastflowlm_prompt("hello there"), None);
+/// assert_eq!(parse_fastflowlm_prompt("ai   "), None);
+/// ```
 pub fn parse_fastflowlm_prompt(query: &str) -> Option<&str> {
     let trimmed = query.trim();
     let lower = trimmed.to_ascii_lowercase();
@@ -392,6 +621,25 @@ pub fn parse_fastflowlm_prompt(query: &str) -> Option<&str> {
     (!prompt.is_empty()).then_some(prompt)
 }
 
+/// Builds a ContextBundle from index search results for a query, reading file contents where permitted by the provided context limits.
+///
+/// The function searches the index for up to `limits.max_files` matches for `query`, then for each file result attempts to read its contents subject to `limits.max_file_bytes` and `limits.max_context_bytes`. File reads that cannot be included produce entries with `metadata_only_reason` instead of `content`.
+///
+/// # Returns
+///
+/// A `ContextBundle` containing the collected `ContextEntry` items and `total_content_bytes` reflecting the sum of included file contents.
+///
+/// # Examples
+///
+/// ```no_run
+/// use winspot_fastflowlm::{build_index_context, ContextLimits, IndexStore};
+/// // Assume `store` is an existing IndexStore and `query` is the user's query.
+/// let store: IndexStore = /* obtain or construct index store */ unimplemented!();
+/// let query = "explain async runtime";
+/// let limits = ContextLimits { max_files: 5, max_file_bytes: 16_384, max_context_bytes: 65_536 };
+/// let bundle = build_index_context(&store, query, limits).expect("build context");
+/// assert!(bundle.entries.len() <= 5);
+/// ```
 pub fn build_index_context(
     store: &IndexStore,
     query: &str,
@@ -438,6 +686,25 @@ pub fn build_index_context(
     })
 }
 
+/// Searches the index for results matching `query`, then expands the results by searching
+/// individual query tokens until `limit` unique results are collected.
+///
+/// The function first performs a search using the full `query`. If the number of results
+/// is less than `limit`, it tokenizes `query` and performs additional searches for each
+/// token, appending unseen results until the `limit` is reached or no more matches are found.
+/// Errors from the underlying index store are propagated.
+///
+/// # Returns
+///
+/// A vector of up to `limit` unique `SearchResult` entries matching the query or its tokens.
+///
+/// # Examples
+///
+/// ```
+/// // Assume `store` is an initialized IndexStore and `search_index_for_context` is in scope.
+/// let results = search_index_for_context(&store, "fast model inference", 10).unwrap();
+/// assert!(results.len() <= 10);
+/// ```
 fn search_index_for_context(
     store: &IndexStore,
     query: &str,
@@ -463,6 +730,27 @@ fn search_index_for_context(
     Ok(results)
 }
 
+/// Produces query tokens by splitting on non-alphanumeric characters (except `-` and `_`).
+
+///
+
+/// The iterator yields trimmed substrings of length at least 3. Splitting treats any character
+
+/// that is not an ASCII alphanumeric, `-`, or `_` as a separator.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// let tokens: Vec<&str> = crate::query_tokens("find: fast-flow_lm v1.2 beta").collect();
+
+/// assert_eq!(tokens, vec!["find", "fast-flow_lm", "beta"]);
+
+/// ```
 fn query_tokens(query: &str) -> impl Iterator<Item = &str> {
     query
         .split(|character: char| {
@@ -472,6 +760,18 @@ fn query_tokens(query: &str) -> impl Iterator<Item = &str> {
         .filter(|token| token.len() >= 3)
 }
 
+/// Verifies that a FastFlowLM model with the given tag is present in `flm list --json` output.
+///
+/// Parses the provided JSON string and succeeds if it contains an entry identifying the
+/// model tag as installed; returns an error if parsing fails or if no installed model
+/// matching `model_tag` is found.
+///
+/// # Examples
+///
+/// ```
+/// let json = r#"[{ "name": "my-model", "installed": true }]"#;
+/// assert!(validate_installed_model_from_list_json(json, "my-model").is_ok());
+/// ```
 pub fn validate_installed_model_from_list_json(
     json_output: &str,
     model_tag: &str,
@@ -486,6 +786,28 @@ pub fn validate_installed_model_from_list_json(
     );
 }
 
+/// Determine whether an owned process has been idle long enough to be stopped.
+///
+/// `owns_process` indicates whether the caller currently owns the process. `last_used_unix_seconds`
+/// and `now_unix_seconds` are Unix timestamps in seconds; `idle_timeout_seconds` is the allowed idle
+/// duration in seconds. The function uses saturating subtraction to avoid underflow when computing
+/// the elapsed time.
+///
+/// # Examples
+///
+/// ```
+/// // not owned -> don't stop
+/// assert_eq!(should_stop_owned_process(false, 100, 200, 50), false);
+/// // owned but not yet timed out -> don't stop
+/// assert_eq!(should_stop_owned_process(true, 160, 200, 50), false);
+/// // owned and timed out -> stop
+/// assert_eq!(should_stop_owned_process(true, 100, 200, 50), true);
+/// ```
+///
+/// # Returns
+///
+/// `true` if `owns_process` is `true` and `now_unix_seconds - last_used_unix_seconds` is greater than
+/// or equal to `idle_timeout_seconds`, `false` otherwise.
 pub fn should_stop_owned_process(
     owns_process: bool,
     last_used_unix_seconds: u64,
@@ -495,6 +817,28 @@ pub fn should_stop_owned_process(
     owns_process && now_unix_seconds.saturating_sub(last_used_unix_seconds) >= idle_timeout_seconds
 }
 
+/// Load FastFlowLM settings from a JSON settings file, falling back to defaults when the file is missing.
+///
+/// Attempts to read and parse the file at `path` as JSON containing an optional `fastFlowLm` object.
+/// If the file does not exist, returns `FastFlowLmSettings::default()`. The returned settings are
+/// normalized (trimmed/zero values replaced by defaults).
+///
+/// # Parameters
+///
+/// - `path`: Path to a JSON settings file that may contain a `fastFlowLm` section.
+///
+/// # Returns
+///
+/// A `FastFlowLmSettings` instance from the file or the default settings when the file is absent.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+/// let settings = winspot_fastflowlm::load_settings_from_path(Path::new("nonexistent.json")).unwrap();
+/// // defaults are enabled by default
+/// assert!(settings.enabled);
+/// ```
 pub fn load_settings_from_path(path: impl AsRef<Path>) -> anyhow::Result<FastFlowLmSettings> {
     let path = path.as_ref();
     if !path.exists() {
@@ -508,6 +852,25 @@ pub fn load_settings_from_path(path: impl AsRef<Path>) -> anyhow::Result<FastFlo
     Ok(root.fast_flow_lm.unwrap_or_default().normalized())
 }
 
+/// Finds the conventional location for Winspot's settings.json on the current machine.
+///
+/// Checks for a portable installation next to the running executable first:
+/// if a sibling file named `Winspot.portable` exists, returns `<exe_parent>/data/settings.json`.
+/// Otherwise, falls back to `%LOCALAPPDATA%\Winspot\settings.json` when `LOCALAPPDATA` is set.
+///
+/// # Returns
+///
+/// `Some(PathBuf)` with the resolved settings.json path if a portable layout is detected or
+/// `LOCALAPPDATA` is present; `None` if neither location can be determined.
+///
+/// # Examples
+///
+/// ```
+/// if let Some(path) = default_settings_path() {
+///     // Use the discovered settings path
+///     println!("{}", path.display());
+/// }
+/// ```
 pub fn default_settings_path() -> Option<PathBuf> {
     if let Ok(executable) = env::current_exe()
         && let Some(directory) = executable.parent()
@@ -521,6 +884,24 @@ pub fn default_settings_path() -> Option<PathBuf> {
         .map(|local_app_data| PathBuf::from(local_app_data).join("Winspot\\settings.json"))
 }
 
+/// Determines the default filesystem path for the Winspot index, if one can be inferred.
+///
+/// Prefer the portable layout next to the running executable: if a sibling file named
+/// `Winspot.portable` exists, returns `<executable_parent>/data/index.sqlite`. If no portable
+/// layout is detected, returns `%LOCALAPPDATA%\Winspot\index.sqlite` when the `LOCALAPPDATA`
+/// environment variable is set.
+///
+/// # Examples
+///
+/// ```
+/// if let Some(path) = default_index_path() {
+///     // Found a candidate index path
+///     assert!(path.file_name().and_then(|n| n.to_str()) == Some("index.sqlite"));
+/// } else {
+///     // No default path could be determined (e.g., LOCALAPPDATA not set)
+///     assert!(true);
+/// }
+/// ```
 pub fn default_index_path() -> Option<PathBuf> {
     if let Ok(executable) = env::current_exe()
         && let Some(directory) = executable.parent()
@@ -546,6 +927,39 @@ enum FileContextRead {
     MetadataOnly(String),
 }
 
+/// Attempts to read a text content preview for a file while enforcing per-file and aggregate context size limits.
+///
+/// Given a file `path`, returns either `FileContextRead::Content(String)` containing the file's UTF-8 text
+/// when the file is readable and within the provided `limits`, or `FileContextRead::MetadataOnly(String)` with
+/// a short reason when the file must be omitted from the assembled context.
+///
+/// Parameters:
+/// - `path`: filesystem path to the candidate context file.
+/// - `limits`: `ContextLimits` specifying `max_file_bytes` and `max_context_bytes` caps.
+/// - `current_total_bytes`: number of bytes already accumulated into the context bundle; used to enforce the aggregate cap.
+///
+/// Return value:
+/// - `FileContextRead::Content(content)` when the file is a regular file, does not exceed per-file or aggregate caps,
+///   and its contents are valid UTF-8 (no embedded NUL bytes).
+/// - `FileContextRead::MetadataOnly(reason)` when the file is unreadable, not a regular file, exceeds size caps,
+///   or appears binary / non-UTF-8; the `reason` is a short machine-oriented string describing why content was omitted.
+///
+/// # Examples
+///
+/// ```
+/// use std::fs;
+/// use std::io::Write;
+/// use tempfile::NamedTempFile;
+/// // create a small temporary UTF-8 file and read it with generous limits
+/// let mut f = NamedTempFile::new().unwrap();
+/// writeln!(f, "hello world").unwrap();
+/// let path = f.path();
+/// let limits = crate::ContextLimits { max_files: 10, max_file_bytes: 1024, max_context_bytes: 4096 };
+/// match crate::read_context_file(path, limits, 0) {
+///     crate::FileContextRead::Content(s) => assert!(s.contains("hello")),
+///     crate::FileContextRead::MetadataOnly(_) => panic!("expected content"),
+/// }
+/// ```
 fn read_context_file(
     path: &Path,
     limits: ContextLimits,
@@ -576,6 +990,23 @@ fn read_context_file(
     }
 }
 
+/// Checks that the configured FastFlowLM model is installed by running
+/// the configured executable with `list --json` and inspecting its output.
+///
+/// On success, returns `Ok(())`. Returns an error if the executable cannot be
+/// run, if it exits with a non-zero status, if its stdout is not valid UTF-8,
+/// or if the JSON output does not indicate the requested model tag is installed.
+///
+/// # Examples
+///
+/// ```no_run
+/// let settings = FastFlowLmSettings {
+///     model_tag: "my-model:latest".into(),
+///     executable_path: "flm".into(),
+///     ..Default::default()
+/// };
+/// validate_installed_model(&settings).unwrap();
+/// ```
 fn validate_installed_model(settings: &FastFlowLmSettings) -> anyhow::Result<()> {
     let output = Command::new(&settings.executable_path)
         .args(["list", "--json"])
@@ -600,6 +1031,31 @@ fn validate_installed_model(settings: &FastFlowLmSettings) -> anyhow::Result<()>
     validate_installed_model_from_list_json(&stdout, &settings.model_tag)
 }
 
+/// Checks whether a JSON structure contains an installed model with the given tag.
+///
+/// This performs a recursive search through arrays and objects. An object is considered a
+/// match when any of its string fields `name`, `model`, `tag`, or `id` equals `model_tag`
+/// and the object is considered installed. An object is considered installed if it has
+/// a boolean `installed` field set to `true`, or a string `status` field equal to
+/// `"installed"` (case-insensitive). If neither `installed` nor `status` are present,
+/// the object is treated as installed by default.
+///
+/// # Examples
+///
+/// ```
+/// use serde_json::json;
+/// // direct match with installed = true
+/// let v = json!({ "name": "foo", "installed": true });
+/// assert!(json_contains_installed_model(&v, "foo"));
+///
+/// // nested match under arrays/objects
+/// let v = json!({ "models": [{ "tag": "bar", "status": "installed" }] });
+/// assert!(json_contains_installed_model(&v, "bar"));
+///
+/// // not installed
+/// let v = json!({ "id": "baz", "installed": false });
+/// assert!(!json_contains_installed_model(&v, "baz"));
+/// ```
 fn json_contains_installed_model(value: &Value, model_tag: &str) -> bool {
     match value {
         Value::Array(items) => items
@@ -636,6 +1092,21 @@ struct ChatMessage {
     content: String,
 }
 
+/// Builds the chat messages sent to FastFlowLM for a question and the assembled launcher index context.
+///
+/// Returns a two-element vector: a system message that instructs the model to prefer launcher index context when relevant, and a user message containing the trimmed question followed by the formatted context.
+///
+/// # Examples
+///
+/// ```
+/// let ctx = ContextBundle { entries: vec![], total_content_bytes: 0 };
+/// let msgs = build_chat_messages("Who wrote the README?", &ctx);
+/// assert_eq!(msgs.len(), 2);
+/// assert_eq!(msgs[0].role, "system");
+/// assert!(msgs[0].content.contains("FastFlowLM"));
+/// assert_eq!(msgs[1].role, "user");
+/// assert!(msgs[1].content.contains("Question:"));
+/// ```
 fn build_chat_messages(question: &str, context: &ContextBundle) -> Vec<ChatMessage> {
     vec![
         ChatMessage {
@@ -653,6 +1124,33 @@ fn build_chat_messages(question: &str, context: &ContextBundle) -> Vec<ChatMessa
     ]
 }
 
+/// Format a ContextBundle into a human-readable string suitable for embedding in a chat prompt.
+///
+/// # Examples
+///
+/// ```
+/// use std::collections::HashMap;
+///
+/// let entry = crate::ContextEntry {
+///     title: "Example".to_string(),
+///     path: "/path/to/file".to_string(),
+///     kind: crate::ContextEntryKind::File, // adjust variant name to actual enum in this crate
+///     source: Some("index".to_string()),
+///     content: Some("file contents".to_string()),
+///     metadata_only_reason: None,
+/// };
+/// let bundle = crate::ContextBundle {
+///     entries: vec![entry],
+///     total_content_bytes: 13,
+/// };
+/// let formatted = crate::format_context_for_prompt(&bundle);
+/// assert!(formatted.contains("1. Example"));
+/// assert!(formatted.contains("Path: /path/to/file"));
+/// assert!(formatted.contains("Content:\nfile contents"));
+///
+/// let empty = crate::ContextBundle { entries: vec![], total_content_bytes: 0 };
+/// assert_eq!(crate::format_context_for_prompt(&empty), "No index matches.");
+/// ```
 fn format_context_for_prompt(context: &ContextBundle) -> String {
     if context.entries.is_empty() {
         return "No index matches.".to_string();
@@ -684,10 +1182,50 @@ fn format_context_for_prompt(context: &ContextBundle) -> String {
         .join("\n\n")
 }
 
+/// Perform a liveness probe against the FastFlowLM HTTP health endpoint.
+///
+/// Checks the configured port on `settings` by issuing an HTTP GET to the health path
+/// and returns `Ok(())` when the service responds with a successful HTTP status; returns
+/// an error for connection failures or non-successful HTTP responses.
+///
+/// # Examples
+///
+/// ```no_run
+/// let settings = FastFlowLmSettings::default();
+/// // Succeeds when a FastFlowLM server is reachable on `settings.port`.
+/// let _ = health_check(&settings);
+/// ```
 fn health_check(settings: &FastFlowLmSettings) -> anyhow::Result<()> {
     http_get(settings.port, HEALTH_PATH).map(|_| ())
 }
 
+/// Send a chat completion request to the local FastFlowLM server and return the model's reply.
+///
+/// The function posts the provided messages as a JSON body to the FastFlowLM chat completions endpoint,
+/// parses the JSON response, and returns the trimmed content of the first choice's message. It fails
+/// if the response is malformed or the first choice's content is empty or missing.
+///
+/// # Returns
+///
+/// `String` containing the trimmed content of the first choice's message, or an error if the response
+/// cannot be parsed or contains no non-empty content.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use serde_json::json;
+///
+/// // Construct a minimal settings and messages (values shown for illustration).
+/// let settings = FastFlowLmSettings {
+///     model_tag: "gpt-like-model".to_string(),
+///     ..Default::default()
+/// };
+/// let messages = vec![ChatMessage { role: "user", content: "Hello, what's up?".to_string() }];
+///
+/// // Send the request (requires a running FastFlowLM server at settings.port).
+/// let reply = request_chat_completion(&settings, &messages).expect("request failed");
+/// println!("model reply: {}", reply);
+/// ```
 fn request_chat_completion(
     settings: &FastFlowLmSettings,
     messages: &[ChatMessage],
@@ -725,14 +1263,53 @@ struct ChatChoiceMessage {
     content: Option<String>,
 }
 
+/// Performs an HTTP GET to the local FastFlowLM HTTP server and returns the response body.
+///
+/// The function contacts 127.0.0.1 on the given port and requests the provided path. It returns the
+/// response body when the server responds with a 2xx status; it returns an error for connection,
+/// timeout, or non-successful HTTP responses.
+///
+/// # Examples
+///
+/// ```no_run
+/// let body = http_get(52625, "/v1/models").unwrap();
+/// assert!(body.len() > 0);
+/// ```
 fn http_get(port: u16, path: &str) -> anyhow::Result<String> {
     http_request(port, "GET", path, None)
 }
 
+/// Sends a JSON POST request to the local FastFlowLM HTTP server and returns the response body.
+///
+/// The JSON `body` is serialized and sent to `127.0.0.1:<port><path>` using a blocking TCP request; the function returns the response body as a string when the server responds with a successful (2xx) status code.
+///
+/// # Examples
+///
+/// ```
+/// use serde_json::json;
+///
+/// let body = json!({ "model": "gpt", "messages": [] });
+/// let resp = winspot_fastflowlm::http_post_json(52625, "/v1/chat/completions", &body).unwrap();
+/// assert!(!resp.is_empty());
+/// ```
 fn http_post_json(port: u16, path: &str, body: &Value) -> anyhow::Result<String> {
     http_request(port, "POST", path, Some(body.to_string()))
 }
 
+/// Send a simple HTTP/1.1 request to the local FastFlowLM server and return its response body.
+///
+/// This opens a TCP connection to 127.0.0.1:<port>, sends an HTTP request with the given method,
+/// path, and optional JSON body, then reads and validates the HTTP response. Errors are returned
+/// if the connection fails, timeouts occur, the response is malformed, or the HTTP status is not
+/// in the 200..=299 range.
+///
+/// # Examples
+///
+/// ```no_run
+/// let body = None;
+/// let resp = http_request(52625, "GET", "/v1/models", body).expect("request failed");
+/// println!("FastFlowLM response body: {}", resp);
+/// ```
 fn http_request(
     port: u16,
     method: &str,
@@ -790,38 +1367,131 @@ fn http_request(
     Ok(response_body.to_string())
 }
 
+/// Default value for the `enabled` setting.
+///
+/// # Returns
+///
+/// `true` — the default enabled state.
+///
+/// # Examples
+///
+/// ```
+/// assert!(default_enabled());
+/// ```
 fn default_enabled() -> bool {
     true
 }
 
+/// Default model tag used when no model tag is provided in settings.
+///
+/// # Examples
+///
+/// ```
+/// let tag = default_model_tag();
+/// assert!(!tag.is_empty());
+/// ```
 fn default_model_tag() -> String {
     DEFAULT_MODEL_TAG.to_string()
 }
 
+/// Default executable path used to run the FastFlowLM binary.
+///
+/// # Returns
+///
+/// A `String` containing the default executable path.
+///
+/// # Examples
+///
+/// ```
+/// let path = default_executable_path();
+/// assert_eq!(path, DEFAULT_EXECUTABLE_PATH.to_string());
+/// ```
 fn default_executable_path() -> String {
     DEFAULT_EXECUTABLE_PATH.to_string()
 }
 
+/// Default TCP port used to contact the FastFlowLM server.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(default_port(), 52625);
+/// ```
 fn default_port() -> u16 {
     DEFAULT_PORT
 }
 
+/// Default idle timeout used by the manager's idle reaper, in seconds.
+///
+/// # Returns
+///
+/// The default number of seconds a spawned FastFlowLM process may remain idle before being stopped.
+///
+/// # Examples
+///
+/// ```
+/// let timeout = default_idle_timeout_seconds();
+/// assert!(timeout >= 1);
+/// ```
 fn default_idle_timeout_seconds() -> u64 {
     DEFAULT_IDLE_TIMEOUT_SECONDS
 }
 
+/// Default maximum number of context files allowed.
+///
+/// # Returns
+///
+/// The default cap for the number of context files included in a model context bundle.
+///
+/// # Examples
+///
+/// ```
+/// let cap = default_max_context_files();
+/// assert!(cap > 0);
+/// ```
 fn default_max_context_files() -> usize {
     DEFAULT_MAX_CONTEXT_FILES
 }
 
+/// Default per-file context size cap in bytes.
+///
+/// # Returns
+///
+/// The default maximum number of bytes allowed for a single context file.
+///
+/// # Examples
+///
+/// ```
+/// let cap = default_max_file_bytes();
+/// assert_eq!(cap, DEFAULT_MAX_FILE_BYTES);
+/// ```
 fn default_max_file_bytes() -> usize {
     DEFAULT_MAX_FILE_BYTES
 }
 
+/// Default maximum allowed aggregate context size in bytes.
+///
+/// # Examples
+///
+/// ```
+/// let cap = default_max_context_bytes();
+/// assert!(cap > 0);
+/// ```
 fn default_max_context_bytes() -> usize {
     DEFAULT_MAX_CONTEXT_BYTES
 }
 
+/// Get the current Unix time as whole seconds since the Unix epoch.
+///
+/// Returns the number of seconds elapsed since 1970-01-01T00:00:00Z. If the system time is before the Unix epoch or cannot be determined, returns 0.
+///
+/// # Examples
+///
+/// ```
+/// let secs = current_unix_seconds();
+/// // `secs` is the number of seconds since the Unix epoch (or 0 on error)
+/// assert!(secs >= 0);
+/// ```
 fn current_unix_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
