@@ -663,8 +663,8 @@ fn capture_with_windows_capture(
         }
         (CaptureMode::Record { seconds }, CaptureTarget::Monitor(selection)) => {
             let monitor = monitor_from_selection(selection)?;
-            let width = monitor.width().map_err(|error| anyhow!("{error}"))?;
-            let height = monitor.height().map_err(|error| anyhow!("{error}"))?;
+            let width = monitor.width().map_err(|error| anyhow!("{error}"))? & !1;
+            let height = monitor.height().map_err(|error| anyhow!("{error}"))? & !1;
             let settings = Settings::new(
                 monitor,
                 cursor_setting(settings),
