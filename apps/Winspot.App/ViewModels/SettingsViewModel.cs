@@ -29,6 +29,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private MotionProfile _motionProfile = MotionProfile.Snappy240;
     private int _selectedSectionIndex;
     private string _statusMessage = string.Empty;
+    private bool _isPluginValidationRunning;
+    private PluginValidationReport _pluginValidationReport = PluginValidationReport.Empty;
+    private IReadOnlyList<PluginValidationEntryViewItem> _pluginValidationEntries = Array.Empty<PluginValidationEntryViewItem>();
+    private string _pluginValidationSummary = SettingsDisplayStrings.PluginValidationNotChecked;
+    private string _pluginValidationIssueSummary = string.Empty;
+    private string _pluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthUnchecked;
+    private string _pluginValidationLastCheckedText = string.Empty;
+    private bool _showOnlyPluginValidationIssues = true;
 
     public SettingsViewModel()
         : this(new LauncherSettingsStore())
@@ -96,7 +104,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         MotionProfile.ToString(),
         ShowTrayIcon,
         HotkeyPreview,
-        AppVersion);
+        AppVersion,
+        PluginValidationSummary);
 
     public bool UseControl
     {
@@ -190,6 +199,60 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         private set => SetField(ref _statusMessage, value);
     }
 
+    public bool IsPluginValidationRunning
+    {
+        get => _isPluginValidationRunning;
+        private set => SetField(ref _isPluginValidationRunning, value);
+    }
+
+    public string PluginValidationSummary
+    {
+        get => _pluginValidationSummary;
+        private set
+        {
+            if (SetField(ref _pluginValidationSummary, value))
+            {
+                OnPropertyChanged(nameof(DiagnosticsText));
+            }
+        }
+    }
+
+    public string PluginValidationIssueSummary
+    {
+        get => _pluginValidationIssueSummary;
+        private set => SetField(ref _pluginValidationIssueSummary, value);
+    }
+
+    public string PluginValidationHealth
+    {
+        get => _pluginValidationHealth;
+        private set => SetField(ref _pluginValidationHealth, value);
+    }
+
+    public string PluginValidationLastCheckedText
+    {
+        get => _pluginValidationLastCheckedText;
+        private set => SetField(ref _pluginValidationLastCheckedText, value);
+    }
+
+    public bool ShowOnlyPluginValidationIssues
+    {
+        get => _showOnlyPluginValidationIssues;
+        set
+        {
+            if (SetField(ref _showOnlyPluginValidationIssues, value))
+            {
+                RefreshPluginValidationEntries();
+            }
+        }
+    }
+
+    public IReadOnlyList<PluginValidationEntryViewItem> PluginValidationEntries
+    {
+        get => _pluginValidationEntries;
+        private set => SetField(ref _pluginValidationEntries, value);
+    }
+
     /// The activation chord as it would be shown to the user (e.g. "Ctrl Alt Space").
     public string HotkeyPreview => BuildBinding().ToDisplayString();
 
@@ -267,6 +330,58 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task RefreshPluginValidationAsync(CancellationToken cancellationToken)
+    {
+        if (IsPluginValidationRunning)
+        {
+            return;
+        }
+
+        var previousReport = _pluginValidationReport;
+        var previousEntries = PluginValidationEntries;
+        var previousHealth = PluginValidationHealth;
+        var previousSummary = PluginValidationSummary;
+        var previousIssueSummary = PluginValidationIssueSummary;
+        var previousLastCheckedText = PluginValidationLastCheckedText;
+
+        IsPluginValidationRunning = true;
+        PluginValidationSummary = SettingsDisplayStrings.PluginValidationChecking;
+        PluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthChecking;
+
+        try
+        {
+            _pluginValidationReport = await _ipcClient.GetPluginDiagnosticsAsync(cancellationToken).ConfigureAwait(true);
+            PluginValidationHealth = SettingsDisplayStrings.FormatPluginValidationHealth(_pluginValidationReport.Health);
+            PluginValidationSummary = SettingsDisplayStrings.FormatPluginValidationSummary(_pluginValidationReport);
+            PluginValidationIssueSummary = SettingsDisplayStrings.FormatPluginValidationIssueSummary(_pluginValidationReport);
+            PluginValidationLastCheckedText = SettingsDisplayStrings.FormatPluginValidationLastChecked(DateTimeOffset.Now);
+            RefreshPluginValidationEntries();
+        }
+        catch (OperationCanceledException)
+        {
+            _pluginValidationReport = previousReport;
+            PluginValidationEntries = previousEntries;
+            PluginValidationHealth = previousHealth;
+            PluginValidationSummary = previousSummary;
+            PluginValidationIssueSummary = previousIssueSummary;
+            PluginValidationLastCheckedText = previousLastCheckedText;
+        }
+        catch
+        {
+            _pluginValidationReport = PluginValidationReport.Empty;
+            PluginValidationEntries = Array.Empty<PluginValidationEntryViewItem>();
+            PluginValidationHealth = SettingsDisplayStrings.PluginValidationHealthUnavailable;
+            PluginValidationSummary = SettingsDisplayStrings.PluginValidationUnavailable;
+            PluginValidationIssueSummary = string.Empty;
+            PluginValidationLastCheckedText = string.Empty;
+            OnPropertyChanged(nameof(DiagnosticsText));
+        }
+        finally
+        {
+            IsPluginValidationRunning = false;
+        }
+    }
+
     private void LoadFrom(LauncherSettings settings)
     {
         var modifiers = settings.Hotkey.Modifiers
@@ -316,6 +431,24 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return modifiers;
     }
 
+    private void RefreshPluginValidationEntries()
+    {
+        var entries = ShowOnlyPluginValidationIssues
+            ? _pluginValidationReport.SafeEntries.Where(entry => entry.HasIssues).ToArray()
+            : _pluginValidationReport.SafeEntries.ToArray();
+
+        PluginValidationEntries = entries.Select(CreatePluginValidationEntryViewItem).ToArray();
+    }
+
+    private static PluginValidationEntryViewItem CreatePluginValidationEntryViewItem(PluginValidationEntry entry) => new(
+        SettingsDisplayStrings.FormatPluginValidationEntryName(entry),
+        entry.Status,
+        SettingsDisplayStrings.FormatPluginValidationTrust(entry.Trusted),
+        entry.ManifestPath,
+        entry.SafeIssues
+            .Select(issue => new PluginValidationIssueViewItem(SettingsDisplayStrings.FormatPluginValidationIssue(issue)))
+            .ToArray());
+
     private static bool IsKeyValid(string? key)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -359,3 +492,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
+
+public sealed record PluginValidationEntryViewItem(
+    string DisplayName,
+    string Status,
+    string TrustSummary,
+    string? ManifestPath,
+    IReadOnlyList<PluginValidationIssueViewItem> Issues);
+
+public sealed record PluginValidationIssueViewItem(string DisplayText);

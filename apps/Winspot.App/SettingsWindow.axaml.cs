@@ -1,3 +1,7 @@
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
@@ -8,6 +12,8 @@ namespace Winspot_App;
 
 public sealed partial class SettingsWindow : Window
 {
+    private CancellationTokenSource? _pluginValidationCancellation;
+
     public SettingsWindow()
         : this(new SettingsViewModel())
     {
@@ -18,6 +24,8 @@ public sealed partial class SettingsWindow : Window
         ViewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        Opened += OnOpened;
+        Closed += OnClosed;
     }
 
     public SettingsViewModel ViewModel { get; }
@@ -43,6 +51,55 @@ public sealed partial class SettingsWindow : Window
 
     private async void OnOpenPluginsFolderClick(object? sender, RoutedEventArgs e)
     {
-        await ViewModel.OpenPluginsFolderAsync(CancellationToken.None);
+        try
+        {
+            await ViewModel.OpenPluginsFolderAsync(CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Opening the plugins folder failed: {exception}");
+        }
+    }
+
+    private async void OnValidatePluginsClick(object? sender, RoutedEventArgs e)
+    {
+        await RefreshPluginValidationAsync();
+    }
+
+    private async void OnOpened(object? sender, EventArgs e)
+    {
+        await RefreshPluginValidationAsync();
+    }
+
+    private async Task RefreshPluginValidationAsync()
+    {
+        var cancellation = ResetPluginValidationCancellation();
+        try
+        {
+            await ViewModel.RefreshPluginValidationAsync(cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            Debug.WriteLine($"Refreshing plugin validation failed: {exception}");
+        }
+    }
+
+    private CancellationTokenSource ResetPluginValidationCancellation()
+    {
+        var previous = _pluginValidationCancellation;
+        previous?.Cancel();
+        _pluginValidationCancellation = new CancellationTokenSource();
+        previous?.Dispose();
+        return _pluginValidationCancellation;
+    }
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        _pluginValidationCancellation?.Cancel();
+        _pluginValidationCancellation?.Dispose();
+        _pluginValidationCancellation = null;
     }
 }
