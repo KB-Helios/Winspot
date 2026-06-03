@@ -91,6 +91,7 @@ impl DaemonRuntime {
     }
 }
 
+#[cfg(windows)]
 pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
     let runtime = build_daemon_runtime(&config).context("build daemon runtime")?;
 
@@ -134,6 +135,7 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
 /// function: the kernel copies it into the pipe object at creation, so it does
 /// not need to outlive the call (and never crosses an `.await`, keeping the
 /// async server `Send`).
+#[cfg(windows)]
 fn create_secured_pipe(name: &str, first_instance: bool) -> std::io::Result<NamedPipeServer> {
     let security = PipeSecurity::current_user_only()?;
     // SAFETY: `security` owns the SECURITY_ATTRIBUTES (and the descriptor it
@@ -236,7 +238,7 @@ fn current_plugin_validation_report(
     config: &PipeConfig,
 ) -> PluginValidationReport {
     let Some(dir) = config.plugins_dir.as_deref() else {
-        return runtime.plugin_validation_report.read().unwrap().clone();
+        return runtime.plugin_validation_report.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
     };
 
     let (mut registry, mut report) = PluginRegistry::with_built_ins_with_report();
@@ -244,8 +246,8 @@ fn current_plugin_validation_report(
         Ok(user_report) => {
             report.extend(user_report);
             // Update the live registry and report in the runtime
-            *runtime.plugin_registry.write().unwrap() = registry;
-            *runtime.plugin_validation_report.write().unwrap() = report.clone();
+            *runtime.plugin_registry.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = registry;
+            *runtime.plugin_validation_report.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = report.clone();
             report
         }
         Err(error) => {
@@ -253,7 +255,7 @@ fn current_plugin_validation_report(
                 "winspot-daemon: failed to rescan plugins directory {}: {error:?}",
                 dir.display()
             );
-            runtime.plugin_validation_report.read().unwrap().clone()
+            runtime.plugin_validation_report.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
         }
     }
 }
@@ -307,6 +309,7 @@ pub async fn serve_runtime_pipe_once(
     serve_connection(server, runtime, &config).await
 }
 
+#[cfg(windows)]
 async fn serve_connection(
     server: NamedPipeServer,
     runtime: &DaemonRuntime,
@@ -478,6 +481,7 @@ fn handle_line(
     }
 }
 
+#[cfg(windows)]
 async fn write_envelope(
     server: &mut NamedPipeServer,
     envelope: &IpcEnvelope,
