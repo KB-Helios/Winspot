@@ -189,7 +189,10 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            StatusText = $"Action failed: {ex.Message}";
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                StatusText = $"Action failed: {ex.Message}";
+            }
         }
 
         return false;

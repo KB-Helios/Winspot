@@ -31,11 +31,15 @@ pub const DEFAULT_MAX_CONTEXT_FILES: usize = 5;
 pub const DEFAULT_MAX_FILE_BYTES: usize = 1024 * 1024;
 pub const DEFAULT_MAX_CONTEXT_BYTES: usize = 4 * 1024 * 1024;
 
+const HARD_MAX_FILE_BYTES: usize = 4 * 1024 * 1024;
+const HARD_MAX_CONTEXT_BYTES: usize = 16 * 1024 * 1024;
 const HEALTH_PATH: &str = "/v1/models";
 const CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 const SERVER_START_TIMEOUT: Duration = Duration::from_secs(10);
 const MODEL_LIST_TIMEOUT: Duration = Duration::from_secs(10);
+const MODEL_LIST_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
+const READ_CHUNK_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,9 +136,11 @@ impl FastFlowLmSettings {
         if self.max_file_bytes == 0 {
             self.max_file_bytes = defaults.max_file_bytes;
         }
+        self.max_file_bytes = self.max_file_bytes.min(HARD_MAX_FILE_BYTES);
         if self.max_context_bytes == 0 {
             self.max_context_bytes = defaults.max_context_bytes;
         }
+        self.max_context_bytes = self.max_context_bytes.min(HARD_MAX_CONTEXT_BYTES);
         self
     }
 
@@ -155,8 +161,8 @@ impl FastFlowLmSettings {
     pub fn context_limits(&self) -> ContextLimits {
         ContextLimits {
             max_files: self.max_context_files,
-            max_file_bytes: self.max_file_bytes,
-            max_context_bytes: self.max_context_bytes,
+            max_file_bytes: self.max_file_bytes.clamp(1, HARD_MAX_FILE_BYTES),
+            max_context_bytes: self.max_context_bytes.clamp(1, HARD_MAX_CONTEXT_BYTES),
         }
     }
 }
@@ -643,8 +649,8 @@ pub fn build_index_context(
 ) -> anyhow::Result<ContextBundle> {
     let limits = ContextLimits {
         max_files: limits.max_files.max(1),
-        max_file_bytes: limits.max_file_bytes.max(1),
-        max_context_bytes: limits.max_context_bytes.max(1),
+        max_file_bytes: limits.max_file_bytes.clamp(1, HARD_MAX_FILE_BYTES),
+        max_context_bytes: limits.max_context_bytes.clamp(1, HARD_MAX_CONTEXT_BYTES),
     };
     let matches = search_index_for_context(store, query, limits.max_files)?;
     let mut entries = Vec::with_capacity(matches.len());
@@ -992,12 +998,20 @@ fn read_context_file(
     }
 
     let allowed_bytes = limits.max_file_bytes.min(remaining_context_bytes);
-    let read_limit = u64::try_from(allowed_bytes.saturating_add(1)).unwrap_or(u64::MAX);
-    let mut bytes = Vec::with_capacity(file_bytes.min(allowed_bytes));
-    let mut limited_file = file.take(read_limit);
-    if limited_file.read_to_end(&mut bytes).is_err() {
-        return FileContextRead::MetadataOnly("unreadable file".to_string());
-    }
+    let bytes = match read_to_vec_with_cap(file, allowed_bytes) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => {
+            let reason = if allowed_bytes == remaining_context_bytes
+                && remaining_context_bytes < limits.max_file_bytes
+            {
+                "aggregate context cap reached"
+            } else {
+                "file exceeds per-file content cap"
+            };
+            return FileContextRead::MetadataOnly(reason.to_string());
+        }
+        Err(_) => return FileContextRead::MetadataOnly("unreadable file".to_string()),
+    };
     if bytes.len() > allowed_bytes {
         let reason = if allowed_bytes == remaining_context_bytes
             && remaining_context_bytes < limits.max_file_bytes
@@ -1051,6 +1065,14 @@ fn validate_installed_model(settings: &FastFlowLmSettings) -> anyhow::Result<()>
 }
 
 fn run_flm_list_json(settings: &FastFlowLmSettings, timeout: Duration) -> anyhow::Result<Output> {
+    run_flm_list_json_with_output_limit(settings, timeout, MODEL_LIST_OUTPUT_LIMIT_BYTES)
+}
+
+fn run_flm_list_json_with_output_limit(
+    settings: &FastFlowLmSettings,
+    timeout: Duration,
+    output_limit_bytes: usize,
+) -> anyhow::Result<Output> {
     let mut child = Command::new(&settings.executable_path)
         .args(["list", "--json"])
         .stdin(Stdio::null())
@@ -1073,14 +1095,12 @@ fn run_flm_list_json(settings: &FastFlowLmSettings, timeout: Duration) -> anyhow
         .take()
         .ok_or_else(|| anyhow!("failed to capture FastFlowLM model-list stderr"))?;
     let stdout_reader = std::thread::spawn(move || {
-        let mut reader = stdout;
-        let mut bytes = Vec::new();
-        reader.read_to_end(&mut bytes).map(|_| bytes)
+        read_to_vec_with_cap(stdout, output_limit_bytes)?
+            .ok_or_else(|| anyhow!("FastFlowLM model-list stdout exceeded output cap"))
     });
     let stderr_reader = std::thread::spawn(move || {
-        let mut reader = stderr;
-        let mut bytes = Vec::new();
-        reader.read_to_end(&mut bytes).map(|_| bytes)
+        read_to_vec_with_cap(stderr, output_limit_bytes)?
+            .ok_or_else(|| anyhow!("FastFlowLM model-list stderr exceeded output cap"))
     });
 
     let started = Instant::now();
@@ -1113,13 +1133,44 @@ fn run_flm_list_json(settings: &FastFlowLmSettings, timeout: Duration) -> anyhow
 }
 
 fn join_reader(
-    reader: std::thread::JoinHandle<std::io::Result<Vec<u8>>>,
+    reader: std::thread::JoinHandle<anyhow::Result<Vec<u8>>>,
     stream_name: &str,
 ) -> anyhow::Result<Vec<u8>> {
     reader
         .join()
         .map_err(|_| anyhow!("FastFlowLM model-list {stream_name} reader panicked"))?
-        .with_context(|| format!("read FastFlowLM model-list {stream_name}"))
+        .map_err(|error| anyhow!("read FastFlowLM model-list {stream_name}: {error:#}"))
+}
+
+fn read_to_vec_with_cap(
+    mut reader: impl Read,
+    max_bytes: usize,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let mut bytes = Vec::new();
+    let mut chunk = [0u8; READ_CHUNK_BYTES];
+
+    loop {
+        let remaining = max_bytes.saturating_sub(bytes.len());
+        let read_len = chunk.len().min(remaining.saturating_add(1));
+        if read_len == 0 {
+            return Ok(None);
+        }
+
+        let read = reader
+            .read(&mut chunk[..read_len])
+            .context("read bounded stream")?;
+        if read == 0 {
+            return Ok(Some(bytes));
+        }
+        if bytes.len().saturating_add(read) > max_bytes {
+            return Ok(None);
+        }
+
+        bytes
+            .try_reserve(read)
+            .context("reserve bounded stream buffer")?;
+        bytes.extend_from_slice(&chunk[..read]);
+    }
 }
 
 /// Checks whether a JSON structure contains an installed model with the given tag.
@@ -1615,6 +1666,35 @@ mod tests {
 
         assert!(error.to_string().contains("timed out"));
         assert!(started.elapsed() < Duration::from_secs(3));
+        fs::remove_dir_all(root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn read_to_vec_with_cap_when_stream_exceeds_limit_returns_none() {
+        let bytes =
+            read_to_vec_with_cap(std::io::Cursor::new(b"0123456789"), 4).expect("read with cap");
+
+        assert_eq!(bytes, None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn run_flm_list_json_when_stdout_exceeds_limit_returns_error() {
+        let root =
+            std::env::temp_dir().join(format!("winspot-fastflowlm-output-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create temp dir");
+        let fake_flm = root.join("chatty-flm.cmd");
+        fs::write(&fake_flm, "@echo off\r\necho 0123456789abcdef\r\n").expect("write fake flm");
+        let settings = FastFlowLmSettings {
+            executable_path: fake_flm.display().to_string(),
+            ..FastFlowLmSettings::default()
+        };
+
+        let error = run_flm_list_json_with_output_limit(&settings, Duration::from_secs(5), 4)
+            .expect_err("large stdout should exceed cap");
+
+        assert!(error.to_string().contains("stdout exceeded output cap"));
         fs::remove_dir_all(root).expect("cleanup temp dir");
     }
 }

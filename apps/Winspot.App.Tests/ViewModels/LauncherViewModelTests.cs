@@ -245,6 +245,39 @@ public sealed class LauncherViewModelTests
     }
 
     [TestMethod]
+    public async Task Query_WhenCancelledFastFlowLmActionFails_DoesNotOverwriteStatus()
+    {
+        var client = new FakeWinspotIpcClient
+        {
+            ExecuteCompletion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously),
+            ExecuteIgnoresCancellation = true,
+            ExecuteStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        client.SearchBatches.Enqueue(new[] { Result("app:notes", "Notes") });
+        var viewModel = new LauncherViewModel(client);
+        viewModel.SelectedResult = new SearchResultItem(
+            "plugin:fastflowlm",
+            "summarize roadmap",
+            "Ask FastFlowLM with launcher context",
+            "Plugin",
+            1,
+            "PluginCommand",
+            new[] { new ActionItem("run-plugin", "Ask", "PluginCommand") },
+            "fastflowlm");
+
+        var actionTask = viewModel.AcceptSelectionAsync();
+        await client.ExecuteStarted.Task;
+        var searchTask = client.WaitForSearchAsync();
+
+        viewModel.Query = "notes";
+        await searchTask;
+        client.ExecuteCompletion.SetException(new InvalidOperationException("stale failure"));
+        await actionTask;
+
+        Assert.AreNotEqual("Action failed: stale failure", viewModel.StatusText);
+    }
+
+    [TestMethod]
     public async Task AcceptSelection_WhenActionChipIsFocused_ExecutesFocusedActionKind()
     {
         var client = new FakeWinspotIpcClient();
@@ -331,6 +364,8 @@ public sealed class LauncherViewModelTests
 
         public TaskCompletionSource<string>? ExecuteCompletion { get; init; }
 
+        public bool ExecuteIgnoresCancellation { get; init; }
+
         public bool ExecuteCancellationObserved { get; private set; }
 
         public async Task<string> ExecuteAsync(
@@ -344,7 +379,9 @@ public sealed class LauncherViewModelTests
             {
                 try
                 {
-                    return await ExecuteCompletion.Task.WaitAsync(cancellationToken);
+                    return ExecuteIgnoresCancellation
+                        ? await ExecuteCompletion.Task
+                        : await ExecuteCompletion.Task.WaitAsync(cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
