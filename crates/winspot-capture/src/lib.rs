@@ -640,7 +640,7 @@ fn capture_with_windows_capture(
             let mut duplication =
                 DxgiDuplicationApi::new(monitor).map_err(|error| anyhow!("{error}"))?;
             let mut frame = duplication
-                .acquire_next_frame(100)
+                .acquire_next_frame(1000)
                 .map_err(|error| anyhow!("{error}"))?;
             frame
                 .save_as_image(output_path, ImageFormat::Png)
