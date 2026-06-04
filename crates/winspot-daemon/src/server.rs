@@ -2,6 +2,7 @@ use std::{
     env,
     path::PathBuf,
     sync::{Arc, RwLock},
+    thread,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -675,9 +676,7 @@ fn handle_action(
             completed.message.clone()
         }
         Err(error) => {
-            eprintln!(
-                "winspot-daemon: action succeeded but usage logging failed: {error:?}"
-            );
+            eprintln!("winspot-daemon: action succeeded but usage logging failed: {error:?}");
             format!("{} (usage logging failed)", completed.message)
         }
     };
@@ -707,8 +706,8 @@ fn handle_capture_action(
     let action_clone = action.clone();
     let config_clone = config.clone();
     let engine = runtime.engine.clone();
-    thread::spawn(move || {
-        match service.execute_result_id(&action_clone.result_id) {
+    thread::spawn(
+        move || match service.execute_result_id(&action_clone.result_id) {
             Ok(outcome) => {
                 let mut message = format!("Saved capture to {}", outcome.output_path);
                 match record_usage(&action_clone, now, &config_clone) {
@@ -727,8 +726,8 @@ fn handle_capture_action(
             Err(error) => {
                 eprintln!("winspot-daemon: capture failed: {error:?}");
             }
-        }
-    });
+        },
+    );
 
     winspot_core::ActionCompleted {
         action_id: action.action_id,
@@ -1024,6 +1023,7 @@ mod tests {
         path::Path,
         sync::{Arc, Mutex, mpsc},
         thread,
+        time::{Duration, Instant},
     };
 
     use super::*;
@@ -1193,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_action_routes_to_capture_service_and_returns_output_path() {
+    fn capture_action_routes_to_capture_service_and_schedules_capture() {
         let backend = Arc::new(RecordingCaptureBackend::default());
         let service = CaptureService::with_backend(
             WindowsCaptureSettings {
@@ -1227,10 +1227,10 @@ mod tests {
         );
 
         assert!(completed.succeeded, "{}", completed.message);
-        assert!(completed.message.contains("Saved capture to"));
-        assert!(completed.message.contains("winspot-screenshot-"));
+        assert_eq!(completed.message, "Capture scheduled.");
+        let calls = wait_for_capture_calls(&backend, 1);
         assert_eq!(
-            backend.calls.lock().expect("calls").as_slice(),
+            calls.as_slice(),
             &[CaptureCommand::screenshot(CaptureTarget::ForegroundWindow)]
         );
     }
@@ -1272,6 +1272,20 @@ mod tests {
     #[derive(Default)]
     struct RecordingCaptureBackend {
         calls: Mutex<Vec<CaptureCommand>>,
+    }
+
+    fn wait_for_capture_calls(
+        backend: &RecordingCaptureBackend,
+        expected_count: usize,
+    ) -> Vec<CaptureCommand> {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let calls = backend.calls.lock().expect("calls").clone();
+            if calls.len() >= expected_count || Instant::now() >= deadline {
+                return calls;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     impl CaptureBackend for RecordingCaptureBackend {

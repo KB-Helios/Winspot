@@ -525,7 +525,6 @@ fn capture_with_windows_capture(
 
     use windows_capture::{
         capture::{Context, GraphicsCaptureApiHandler},
-        dxgi_duplication_api::DxgiDuplicationApi,
         encoder::{
             AudioSettingsBuilder, ContainerSettingsBuilder, ImageFormat, VideoEncoder,
             VideoSettingsBuilder,
@@ -665,8 +664,14 @@ fn capture_with_windows_capture(
         }
         (CaptureMode::Record { seconds }, CaptureTarget::Monitor(selection)) => {
             let monitor = monitor_from_selection(selection)?;
-            let width = monitor.width().map_err(|error| anyhow!("{error}"))? & !1;
-            let height = monitor.height().map_err(|error| anyhow!("{error}"))? & !1;
+            let width = even_video_dimension(
+                monitor.width().map_err(|error| anyhow!("{error}"))?,
+                "monitor width",
+            )?;
+            let height = even_video_dimension(
+                monitor.height().map_err(|error| anyhow!("{error}"))?,
+                "monitor height",
+            )?;
             let settings = Settings::new(
                 monitor,
                 cursor_setting(settings),
@@ -686,16 +691,22 @@ fn capture_with_windows_capture(
         }
         (CaptureMode::Record { seconds }, CaptureTarget::ForegroundWindow) => {
             let window = Window::foreground().map_err(|error| anyhow!("{error}"))?;
-            let width = window
-                .width()
-                .map_err(|error| anyhow!("{error}"))?
-                .try_into()
-                .context("foreground window width is invalid")?;
-            let height = window
-                .height()
-                .map_err(|error| anyhow!("{error}"))?
-                .try_into()
-                .context("foreground window height is invalid")?;
+            let width = even_video_dimension(
+                window
+                    .width()
+                    .map_err(|error| anyhow!("{error}"))?
+                    .try_into()
+                    .context("foreground window width is invalid")?,
+                "foreground window width",
+            )?;
+            let height = even_video_dimension(
+                window
+                    .height()
+                    .map_err(|error| anyhow!("{error}"))?
+                    .try_into()
+                    .context("foreground window height is invalid")?,
+                "foreground window height",
+            )?;
             let settings = Settings::new(
                 window,
                 cursor_setting(settings),
@@ -713,6 +724,27 @@ fn capture_with_windows_capture(
             );
             RecordingHandler::start(settings).map_err(|error| anyhow!("{error}"))
         }
+    }
+}
+
+#[cfg(windows)]
+fn even_video_dimension(value: u32, label: &str) -> anyhow::Result<u32> {
+    let even = value & !1;
+    if even == 0 {
+        anyhow::bail!("{label} is too small for video encoding");
+    }
+    Ok(even)
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::even_video_dimension;
+
+    #[test]
+    fn even_video_dimension_rounds_down_odd_values() {
+        assert_eq!(even_video_dimension(1920, "width").unwrap(), 1920);
+        assert_eq!(even_video_dimension(1919, "width").unwrap(), 1918);
+        assert!(even_video_dimension(1, "width").is_err());
     }
 }
 

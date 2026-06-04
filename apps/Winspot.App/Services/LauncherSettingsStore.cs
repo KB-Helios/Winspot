@@ -66,7 +66,7 @@ public sealed class LauncherSettingsStore
                 var normalizedCapture = NormalizeCapture(originalCapture);
                 if (!CaptureSettingsEquals(originalCapture, normalizedCapture))
                 {
-                    settings = settings with { Capture = normalizedCapture };
+                    settings = ReplaceCapture(settings, normalizedCapture);
                     shouldPersistRepair = true;
                 }
             }
@@ -131,6 +131,20 @@ public sealed class LauncherSettingsStore
         MotionProfile = settings.MotionProfile,
         FastFlowLm = NormalizeFastFlowLm(settings.FastFlowLm),
         Capture = NormalizeCapture(settings.Capture),
+    };
+
+    private static LauncherSettings ReplaceCapture(
+        LauncherSettings settings,
+        CaptureSettings capture) => new()
+    {
+        Hotkey = settings.Hotkey,
+        LaunchOnStartup = settings.LaunchOnStartup,
+        ShowTrayIcon = settings.ShowTrayIcon,
+        ReduceMotion = settings.ReduceMotion,
+        ThemeMode = settings.ThemeMode,
+        MotionProfile = settings.MotionProfile,
+        FastFlowLm = settings.FastFlowLm,
+        Capture = capture,
     };
 
     /// <summary>

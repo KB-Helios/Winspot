@@ -207,9 +207,14 @@ public sealed partial class MainWindow : Window
             Hide();
         }
 
-        if (await ViewModel.AcceptSelectionAsync() && !hideBeforeExecution)
+        var actionSucceeded = await ViewModel.AcceptSelectionAsync();
+        if (actionSucceeded && !hideBeforeExecution)
         {
             Hide();
+        }
+        else if (ShouldRestoreAfterFailedPreHiddenExecution(hideBeforeExecution, actionSucceeded))
+        {
+            ShowLauncher();
         }
     }
 
@@ -237,6 +242,10 @@ public sealed partial class MainWindow : Window
     public static bool ShouldHideBeforeExecutingResult(SearchResultItem? result) =>
         result?.Id.StartsWith("plugin:windows-capture:", StringComparison.Ordinal) == true
         || string.Equals(result?.Source, "windows-capture", StringComparison.OrdinalIgnoreCase);
+
+    public static bool ShouldRestoreAfterFailedPreHiddenExecution(
+        bool hideBeforeExecution,
+        bool actionSucceeded) => hideBeforeExecution && !actionSucceeded;
 
     private void ApplyResponsiveBounds()
     {

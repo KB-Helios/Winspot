@@ -72,4 +72,18 @@ public sealed class MainWindowKeyboardTests
         Assert.IsFalse(MainWindow.ShouldHideBeforeExecutingResult(fastFlowLm));
         Assert.IsFalse(MainWindow.ShouldHideBeforeExecutingResult(null));
     }
+
+    [TestMethod]
+    public void ShouldRestoreAfterFailedPreHiddenExecution_OnlyRestoresFailedPreHiddenActions()
+    {
+        Assert.IsTrue(MainWindow.ShouldRestoreAfterFailedPreHiddenExecution(
+            hideBeforeExecution: true,
+            actionSucceeded: false));
+        Assert.IsFalse(MainWindow.ShouldRestoreAfterFailedPreHiddenExecution(
+            hideBeforeExecution: true,
+            actionSucceeded: true));
+        Assert.IsFalse(MainWindow.ShouldRestoreAfterFailedPreHiddenExecution(
+            hideBeforeExecution: false,
+            actionSucceeded: false));
+    }
 }
