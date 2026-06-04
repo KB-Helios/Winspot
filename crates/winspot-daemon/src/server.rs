@@ -2,6 +2,7 @@ use std::{
     env,
     path::PathBuf,
     sync::{Arc, RwLock},
+    thread,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -14,6 +15,10 @@ use winspot_actions::{ActionExecutor, ActionPolicy};
 
 #[cfg(windows)]
 use crate::pipe_security::PipeSecurity;
+use winspot_capture::{
+    CaptureService, WINDOWS_CAPTURE_RESULT_PREFIX, WindowsCaptureProvider, WindowsCaptureSettings,
+    load_settings_from_path as load_capture_settings_from_path,
+};
 use winspot_core::{
     ActionKind, BackendError, HelloAccepted, IpcEnvelope, IpcPayload, MAX_JSON_LINE_BYTES,
     MAX_PROTOCOL_VERSION, MIN_PROTOCOL_VERSION, PluginDiagnosticsReady, PreviewChunk, PreviewReady,
@@ -66,6 +71,7 @@ pub struct DaemonRuntime {
     pub plugin_registry: Arc<RwLock<PluginRegistry>>,
     pub plugin_validation_report: Arc<RwLock<PluginValidationReport>>,
     pub fastflowlm_service: Option<FastFlowLmService>,
+    pub capture_service: Option<CaptureService>,
 }
 
 impl DaemonRuntime {
@@ -88,6 +94,7 @@ impl DaemonRuntime {
             plugin_registry: Arc::new(RwLock::new(registry)),
             plugin_validation_report: Arc::new(RwLock::new(report)),
             fastflowlm_service: None,
+            capture_service: None,
         }
     }
 }
@@ -181,6 +188,7 @@ pub fn build_daemon_runtime(config: &PipeConfig) -> anyhow::Result<DaemonRuntime
         build_plugin_registry(config.plugins_dir.as_deref());
 
     let fastflowlm_settings = load_fastflowlm_settings();
+    let capture_settings = load_capture_settings();
 
     let mut engine = SearchEngine::from_refreshable_providers_with_usage(
         default_search_providers(),
@@ -194,12 +202,18 @@ pub fn build_daemon_runtime(config: &PipeConfig) -> anyhow::Result<DaemonRuntime
     if fastflowlm_settings.enabled {
         engine = engine.with_dynamic_provider(Arc::new(FastFlowLmProvider));
     }
+    if capture_settings.enabled {
+        engine = engine.with_dynamic_provider(Arc::new(WindowsCaptureProvider::new(
+            capture_settings.clone(),
+        )));
+    }
 
     Ok(DaemonRuntime {
         engine,
         plugin_registry,
         plugin_validation_report,
         fastflowlm_service: build_fastflowlm_service(fastflowlm_settings),
+        capture_service: build_capture_service(capture_settings),
     })
 }
 
@@ -312,6 +326,7 @@ pub async fn serve_pipe_once(config: PipeConfig, engine: &SearchEngine) -> anyho
         plugin_registry,
         plugin_validation_report,
         fastflowlm_service: build_fastflowlm_service(load_fastflowlm_settings()),
+        capture_service: build_capture_service(load_capture_settings()),
     };
     serve_runtime_pipe_once(config, &runtime).await
 }
@@ -564,6 +579,16 @@ fn build_preview_chunk(preview: &PreviewRequested) -> PreviewChunk {
 /// assert!(ready.is_final);
 /// ```
 fn build_preview(preview: PreviewRequested) -> PreviewReady {
+    if preview.result.id.starts_with(WINDOWS_CAPTURE_RESULT_PREFIX) {
+        return PreviewReady {
+            preview_id: preview.preview_id,
+            title: preview.result.title,
+            body: "Press Enter to save this capture. No capture starts while previewing."
+                .to_string(),
+            is_final: true,
+        };
+    }
+
     if preview.result.id == FASTFLOWLM_RESULT_ID {
         return PreviewReady {
             preview_id: preview.preview_id,
@@ -634,25 +659,80 @@ fn handle_action(
         return handle_fastflowlm_action(action, runtime, config, now);
     }
 
+    if action.primary_action == ActionKind::PluginCommand
+        && action.result_id.starts_with(WINDOWS_CAPTURE_RESULT_PREFIX)
+    {
+        return handle_capture_action(action, runtime, config, now);
+    }
+
     let completed = ActionExecutor::new(ActionPolicy::allow_all_local()).execute(action.clone());
     if !completed.succeeded {
         return completed;
     }
 
-    match record_usage(&action, now, config).map(|_| {
-        runtime.engine.record_usage(&action.result_id, now);
-        completed.message.clone()
-    }) {
-        Ok(message) => winspot_core::ActionCompleted {
-            action_id: action.action_id,
-            succeeded: true,
-            message,
-        },
-        Err(error) => winspot_core::ActionCompleted {
+    let message = match record_usage(&action, now, config) {
+        Ok(_) => {
+            runtime.engine.record_usage(&action.result_id, now);
+            completed.message.clone()
+        }
+        Err(error) => {
+            eprintln!("winspot-daemon: action succeeded but usage logging failed: {error:?}");
+            format!("{} (usage logging failed)", completed.message)
+        }
+    };
+
+    winspot_core::ActionCompleted {
+        action_id: action.action_id,
+        succeeded: true,
+        message,
+    }
+}
+
+fn handle_capture_action(
+    action: winspot_core::ActionRequested,
+    runtime: &DaemonRuntime,
+    config: &PipeConfig,
+    now: u64,
+) -> winspot_core::ActionCompleted {
+    let Some(service) = &runtime.capture_service else {
+        return winspot_core::ActionCompleted {
             action_id: action.action_id,
             succeeded: false,
-            message: error.to_string(),
+            message: "Windows Capture integration is disabled".to_string(),
+        };
+    };
+
+    let service = service.clone();
+    let action_clone = action.clone();
+    let config_clone = config.clone();
+    let engine = runtime.engine.clone();
+    thread::spawn(
+        move || match service.execute_result_id(&action_clone.result_id) {
+            Ok(outcome) => {
+                let mut message = format!("Saved capture to {}", outcome.output_path);
+                match record_usage(&action_clone, now, &config_clone) {
+                    Ok(_) => {
+                        engine.record_usage(&action_clone.result_id, now);
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "winspot-daemon: capture succeeded but usage logging failed: {error:?}"
+                        );
+                        message.push_str(" (usage logging failed)");
+                    }
+                }
+                eprintln!("winspot-daemon: {message}");
+            }
+            Err(error) => {
+                eprintln!("winspot-daemon: capture failed: {error:?}");
+            }
         },
+    );
+
+    winspot_core::ActionCompleted {
+        action_id: action.action_id,
+        succeeded: true,
+        message: "Capture scheduled.".to_string(),
     }
 }
 
@@ -840,6 +920,29 @@ fn load_fastflowlm_settings() -> FastFlowLmSettings {
     }
 }
 
+fn load_capture_settings() -> WindowsCaptureSettings {
+    let Some(path) = default_settings_path() else {
+        return WindowsCaptureSettings::default();
+    };
+
+    match load_capture_settings_from_path(&path) {
+        Ok(settings) => settings,
+        Err(error) => {
+            eprintln!(
+                "winspot-daemon: failed to read Windows Capture settings from {}: {error:?}",
+                path.display()
+            );
+            WindowsCaptureSettings::default()
+        }
+    }
+}
+
+fn build_capture_service(settings: WindowsCaptureSettings) -> Option<CaptureService> {
+    settings
+        .enabled
+        .then(|| CaptureService::new(settings.normalized()))
+}
+
 /// Initializes a FastFlowLM service if enabled and an index store can be acquired.
 ///
 /// Attempts to open the default index path; on failure it falls back to an in-memory index.
@@ -917,11 +1020,16 @@ mod tests {
         fs, io,
         io::{Read, Write},
         net::{TcpListener, TcpStream},
-        sync::{Arc, mpsc},
+        path::Path,
+        sync::{Arc, Mutex, mpsc},
         thread,
+        time::{Duration, Instant},
     };
 
     use super::*;
+    use winspot_capture::{
+        CaptureBackend, CaptureCommand, CaptureService, CaptureTarget, WindowsCaptureSettings,
+    };
     use winspot_core::{ActionRequested, SearchResultKind};
     use winspot_fastflowlm::{FastFlowLmService, FastFlowLmSettings};
     use winspot_index::{IndexStore, IndexedItem};
@@ -995,6 +1103,7 @@ mod tests {
             plugin_registry: Arc::new(RwLock::new(registry)),
             plugin_validation_report: Arc::new(RwLock::new(report)),
             fastflowlm_service: Some(service),
+            capture_service: None,
         };
 
         let completed = handle_action(
@@ -1038,6 +1147,7 @@ mod tests {
             plugin_registry: Arc::new(RwLock::new(registry)),
             plugin_validation_report: Arc::new(RwLock::new(report)),
             fastflowlm_service: Some(service),
+            capture_service: None,
         };
 
         let completed = handle_action(
@@ -1057,6 +1167,137 @@ mod tests {
 
         assert!(!completed.succeeded);
         assert!(completed.message.contains("failed to run"));
+    }
+
+    #[test]
+    fn capture_preview_is_instructional_only() {
+        let ready = build_preview(PreviewRequested {
+            preview_id: "preview-capture".to_string(),
+            result: winspot_core::SearchResult {
+                id: "plugin:windows-capture:screenshot:monitor:primary".to_string(),
+                title: "Screenshot primary monitor".to_string(),
+                subtitle: "Save a PNG capture".to_string(),
+                kind: SearchResultKind::Plugin,
+                score: 1.0,
+                primary_action: ActionKind::PluginCommand,
+                actions: Vec::new(),
+                source: Some("windows-capture".to_string()),
+                icon_hint: None,
+            },
+        });
+
+        assert!(ready.is_final);
+        assert_eq!(ready.title, "Screenshot primary monitor");
+        assert!(ready.body.contains("Press Enter"));
+        assert!(ready.body.contains("No capture starts while previewing"));
+    }
+
+    #[test]
+    fn capture_action_routes_to_capture_service_and_schedules_capture() {
+        let backend = Arc::new(RecordingCaptureBackend::default());
+        let service = CaptureService::with_backend(
+            WindowsCaptureSettings {
+                output_directory: r"C:\Captures".to_string(),
+                ..WindowsCaptureSettings::default()
+            },
+            backend.clone(),
+        );
+        let (registry, report) = PluginRegistry::with_built_ins_with_report();
+        let runtime = DaemonRuntime {
+            engine: SearchEngine::from_results(Vec::new()),
+            plugin_registry: Arc::new(RwLock::new(registry)),
+            plugin_validation_report: Arc::new(RwLock::new(report)),
+            fastflowlm_service: None,
+            capture_service: Some(service),
+        };
+
+        let completed = handle_action(
+            ActionRequested {
+                action_id: "capture-1".to_string(),
+                result_id: "plugin:windows-capture:screenshot:window:foreground".to_string(),
+                title: "Screenshot foreground window".to_string(),
+                primary_action: ActionKind::PluginCommand,
+            },
+            &runtime,
+            &PipeConfig {
+                pipe_name: r"\\.\pipe\unused".to_string(),
+                usage_log_path: None,
+                plugins_dir: None,
+            },
+        );
+
+        assert!(completed.succeeded, "{}", completed.message);
+        assert_eq!(completed.message, "Capture scheduled.");
+        let calls = wait_for_capture_calls(&backend, 1);
+        assert_eq!(
+            calls.as_slice(),
+            &[CaptureCommand::screenshot(CaptureTarget::ForegroundWindow)]
+        );
+    }
+
+    #[test]
+    fn capture_action_reports_disabled_when_service_is_missing() {
+        let (registry, report) = PluginRegistry::with_built_ins_with_report();
+        let runtime = DaemonRuntime {
+            engine: SearchEngine::from_results(Vec::new()),
+            plugin_registry: Arc::new(RwLock::new(registry)),
+            plugin_validation_report: Arc::new(RwLock::new(report)),
+            fastflowlm_service: None,
+            capture_service: None,
+        };
+
+        let completed = handle_action(
+            ActionRequested {
+                action_id: "capture-disabled".to_string(),
+                result_id: "plugin:windows-capture:record:monitor:primary:8".to_string(),
+                title: "Record primary monitor for 8s".to_string(),
+                primary_action: ActionKind::PluginCommand,
+            },
+            &runtime,
+            &PipeConfig {
+                pipe_name: r"\\.\pipe\unused".to_string(),
+                usage_log_path: None,
+                plugins_dir: None,
+            },
+        );
+
+        assert!(!completed.succeeded);
+        assert!(
+            completed
+                .message
+                .contains("Windows Capture integration is disabled")
+        );
+    }
+
+    #[derive(Default)]
+    struct RecordingCaptureBackend {
+        calls: Mutex<Vec<CaptureCommand>>,
+    }
+
+    fn wait_for_capture_calls(
+        backend: &RecordingCaptureBackend,
+        expected_count: usize,
+    ) -> Vec<CaptureCommand> {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            let calls = backend.calls.lock().expect("calls").clone();
+            if calls.len() >= expected_count || Instant::now() >= deadline {
+                return calls;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    impl CaptureBackend for RecordingCaptureBackend {
+        fn capture(
+            &self,
+            command: &CaptureCommand,
+            _settings: &WindowsCaptureSettings,
+            _output_path: &Path,
+        ) -> anyhow::Result<()> {
+            self.calls.lock().expect("calls").push(command.clone());
+            Ok(())
+        }
     }
 
     /// Create a unique temporary directory for tests.

@@ -78,6 +78,21 @@ fn built_in_plugins_declare_capabilities() {
                 .capabilities
                 .contains(&ActionCapability::ProcessExecution)
     }));
+    assert!(manifests.iter().any(|manifest| {
+        manifest.id == "windows-capture"
+            && manifest
+                .capabilities
+                .contains(&ActionCapability::PluginExecution)
+            && manifest
+                .capabilities
+                .contains(&ActionCapability::ScreenCapture)
+            && manifest
+                .capabilities
+                .contains(&ActionCapability::FilesystemWrite)
+            && manifest
+                .capabilities
+                .contains(&ActionCapability::ProcessInspection)
+    }));
 }
 
 #[test]
@@ -154,6 +169,7 @@ fn with_built_ins_registers_all_built_in_plugins() {
         "clipboard",
         "unit-conversion",
         "fastflowlm",
+        "windows-capture",
     ] {
         assert!(ids.contains(&expected), "missing built-in {expected}");
     }
@@ -178,6 +194,27 @@ fn registry_authorizes_fastflowlm_builtin_plugin() {
             .ensure_plugin_command_allowed("plugin:fastflowlm")
             .is_ok()
     );
+}
+
+#[test]
+fn registry_authorizes_windows_capture_payload_builtin_plugin() {
+    let registry = PluginRegistry::with_built_ins();
+
+    assert!(registry.plugin_has_executable_action("windows-capture"));
+    assert!(
+        registry
+            .ensure_plugin_command_allowed("plugin:windows-capture:screenshot:monitor:primary")
+            .is_ok()
+    );
+    assert!(
+        registry
+            .ensure_plugin_command_allowed("plugin:windows-capture:record:window:foreground:10")
+            .is_ok()
+    );
+    assert!(matches!(
+        registry.ensure_plugin_command_allowed("plugin::windows-capture:screenshot"),
+        Err(winspot_plugins::PluginActionAuthorizationError::MalformedId)
+    ));
 }
 
 /// Merges user-provided plugin manifests from a directory into a registry that already contains built-in plugins and verifies both sources are available.
@@ -333,7 +370,7 @@ fn validation_report_records_unknown_fields_and_user_execution_warnings() {
         r#"{
             "id":"warn",
             "name":"Warn Plugin",
-            "capabilities":["PluginExecution"],
+            "capabilities":["PluginExecution", "ScreenCapture"],
             "description":"future manifest field",
             "enabled":true
         }"#,

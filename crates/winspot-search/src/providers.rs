@@ -153,6 +153,10 @@ fn executable_plugin_actions(plugin_id: &str) -> Vec<ActionDescriptor> {
     }
 }
 
+fn is_explicit_invocation_plugin(plugin_id: &str) -> bool {
+    matches!(plugin_id, "fastflowlm" | "windows-capture")
+}
+
 fn system32_executable_path(file_name: &str) -> PathBuf {
     env::var_os("SystemRoot")
         .map(PathBuf::from)
@@ -618,7 +622,7 @@ pub struct BuiltInPluginProvider;
 
 impl DynamicSearchProvider for BuiltInPluginProvider {
     /// Returns plugin search results whose names contain the given query (case-insensitive),
-    /// excluding the built-in plugin with id `"fastflowlm"`.
+    /// excluding built-in plugins with explicit invocation providers.
     ///
     /// # Parameters
     ///
@@ -635,7 +639,7 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
     /// let provider = BuiltinPluginProvider;
     /// let results = provider.search("calc");
     /// // `results` will contain `SearchResult` entries for matching enabled built-in plugins,
-    /// // but never the plugin with id "fastflowlm".
+    /// // but never explicit invocation plugins such as "fastflowlm" or "windows-capture".
     /// ```
     fn search(&self, query: &str) -> Vec<SearchResult> {
         let normalized = query.trim().to_lowercase();
@@ -644,7 +648,7 @@ impl DynamicSearchProvider for BuiltInPluginProvider {
             .filter(|manifest| {
                 manifest.enabled && manifest.name.to_lowercase().contains(&normalized)
             })
-            .filter(|manifest| manifest.id != "fastflowlm")
+            .filter(|manifest| !is_explicit_invocation_plugin(&manifest.id))
             .map(|manifest| {
                 plugin_result(
                     &manifest.id,
@@ -676,7 +680,7 @@ impl DynamicSearchProvider for PluginProvider {
     /// Searches the plugin registry for enabled plugins whose names contain the given query.
     ///
     /// The search is case-insensitive, trims surrounding whitespace, and excludes the built-in
-    /// plugin manifest with id `"fastflowlm"`. Each matching manifest is converted into a
+    /// plugin manifests that use explicit invocation providers. Each matching manifest is converted into a
     /// `SearchResult` that indicates whether the plugin exposes an executable action.
     ///
     /// # Parameters
@@ -697,7 +701,7 @@ impl DynamicSearchProvider for PluginProvider {
         registry
             .enabled_manifests()
             .filter(|manifest| manifest.name.to_lowercase().contains(&normalized))
-            .filter(|manifest| manifest.id != "fastflowlm")
+            .filter(|manifest| !is_explicit_invocation_plugin(&manifest.id))
             .map(|manifest| {
                 plugin_result(
                     &manifest.id,

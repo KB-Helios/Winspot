@@ -221,6 +221,56 @@ public sealed class SettingsViewModelTests
     }
 
     [TestMethod]
+    public void TrySave_WithCaptureEnabledAndInvalidDurations_FailsWithoutPersisting()
+    {
+        var store = new LauncherSettingsStore(_settingsPath);
+        store.Save(new LauncherSettings
+        {
+            Capture = new CaptureSettings
+            {
+                DefaultRecordSeconds = 15,
+            },
+        });
+        var viewModel = new SettingsViewModel(store)
+        {
+            CaptureEnabled = true,
+            CaptureDefaultRecordSeconds = "0",
+            CaptureMaxRecordSeconds = "not-a-number",
+            CapturePreCaptureDelayMs = "-1",
+        };
+
+        var saved = viewModel.TrySave();
+
+        Assert.IsFalse(saved);
+        Assert.IsFalse(viewModel.IsValid);
+        StringAssert.Contains(viewModel.StatusMessage, "Capture numeric settings");
+        Assert.AreEqual(15, store.Load().Capture.DefaultRecordSeconds);
+    }
+
+    [TestMethod]
+    public void BuildSettings_WithCaptureFields_TrimsAndParsesValues()
+    {
+        var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath))
+        {
+            CaptureEnabled = false,
+            CaptureOutputDirectory = @" C:\Captures ",
+            CaptureDefaultRecordSeconds = "5",
+            CaptureMaxRecordSeconds = "20",
+            CaptureIncludeCursor = false,
+            CapturePreCaptureDelayMs = "750",
+        };
+
+        var settings = viewModel.BuildSettings().Capture;
+
+        Assert.IsFalse(settings.Enabled);
+        Assert.AreEqual(@"C:\Captures", settings.OutputDirectory);
+        Assert.AreEqual(5, settings.DefaultRecordSeconds);
+        Assert.AreEqual(20, settings.MaxRecordSeconds);
+        Assert.IsFalse(settings.IncludeCursor);
+        Assert.AreEqual(750, settings.PreCaptureDelayMs);
+    }
+
+    [TestMethod]
     public void TrySave_RaisesSavedEventWithSnapshot()
     {
         var viewModel = new SettingsViewModel(new LauncherSettingsStore(_settingsPath))
