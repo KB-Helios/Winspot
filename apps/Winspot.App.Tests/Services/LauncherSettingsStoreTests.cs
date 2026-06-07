@@ -358,4 +358,34 @@ public sealed class LauncherSettingsStoreTests
             }
         }
     }
+
+    [TestMethod]
+    public void ResolveLogPath_WhenPortableMarkerExists_UsesExecutableDataLogsFolder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"winspot-portable-logs-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "Winspot.portable"), string.Empty);
+
+            var path = AppPaths.ResolveLogPath(root, "C:\\Ignored");
+
+            Assert.AreEqual(Path.Combine(root, "data", "logs", "app.log"), path);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void ResolveLogPath_WhenNotPortable_UsesLocalAppDataLogsFolder()
+    {
+        var path = AppPaths.ResolveLogPath("C:\\NotPortable", "C:\\Local");
+
+        Assert.AreEqual(Path.Combine("C:\\Local", "Winspot", "logs", "app.log"), path);
+    }
 }

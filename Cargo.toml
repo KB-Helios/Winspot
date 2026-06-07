@@ -25,6 +25,9 @@ serde_json = "1"
 windows-capture = "2.0.0"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tracing = "0.1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 winspot-actions = { path = "crates/winspot-actions" }
 winspot-core = { path = "crates/winspot-core" }

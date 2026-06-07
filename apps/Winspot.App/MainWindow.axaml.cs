@@ -106,10 +106,20 @@ public sealed partial class MainWindow : Window
 
     private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(LauncherViewModel.IsExpanded))
+        // `async void` event handlers have no caller to observe exceptions, so a
+        // throw here would escape to the global handler (or crash). Contain and
+        // log instead.
+        try
         {
-            var (bounds, scaling) = GetResponsiveBounds(ViewModel.IsExpanded);
-            await AnimateBoundsAsync(bounds, scaling);
+            if (e.PropertyName == nameof(LauncherViewModel.IsExpanded))
+            {
+                var (bounds, scaling) = GetResponsiveBounds(ViewModel.IsExpanded);
+                await AnimateBoundsAsync(bounds, scaling);
+            }
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error(nameof(OnViewModelPropertyChanged), exception);
         }
     }
 
@@ -134,6 +144,20 @@ public sealed partial class MainWindow : Window
     }
 
     private async void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        // Guard the `async void` boundary: any exception (notably from the
+        // awaited action execution) would otherwise escape unobserved.
+        try
+        {
+            await HandleKeyDownAsync(e);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error(nameof(OnKeyDown), exception);
+        }
+    }
+
+    private async Task HandleKeyDownAsync(KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {

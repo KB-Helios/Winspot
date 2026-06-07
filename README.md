@@ -9,7 +9,7 @@ protocol.
 ## Architecture
 
 ```
-            named pipe (JSON, v2)
+            named pipe (JSON, v1)
   ┌────────────────┐   <────────>   ┌────────────────────────────┐
   │  Avalonia UI   │                │        Rust daemon         │
   │ apps/Winspot.* │                │   crates/winspot-daemon    │
@@ -30,6 +30,28 @@ protocol.
 | `crates/winspot-preview`| Result previews. |
 | `crates/winspot-actions`| Capability-gated action executor. |
 | `crates/winspot-plugins`| Plugin manifests + registry (see its [README](crates/winspot-plugins/README.md)). |
+
+### IPC protocol (v1)
+
+The UI and daemon speak a newline-delimited JSON protocol. Each line is one
+envelope (`protocolVersion`, `requestId`, `payload`). The current protocol is
+**v1**; the daemon advertises and negotiates exactly v1 (it rejects clients that
+require a newer version). A connection works as:
+
+- **Hello / HelloAccepted** — the client opens with a `Hello` (min/max supported
+  version + client name); the daemon replies with the negotiated version, its
+  `maxJsonLineBytes` guard, and its name.
+- **SearchStarted → ResultBatch… → SearchCompleted** — a query streams back as
+  one or more `ResultBatch` payloads followed by a terminal `SearchCompleted`.
+- **PreviewRequested → PreviewReady / PreviewChunk** — previews for a selected
+  result.
+- **ActionRequested → ActionCompleted** — capability-gated action execution.
+- **PluginDiagnosticsRequested → PluginDiagnosticsReady** — plugin validation
+  diagnostics.
+- **Error** — any malformed or oversized line is answered with a structured
+  `Error` (`bad_request` / `payload_too_large`) rather than crashing the
+  connection; lines larger than `maxJsonLineBytes` are rejected without being
+  buffered.
 
 A deeper write-up lives in [`docs/architecture-current.md`](docs/architecture-current.md).
 

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -6,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 
+using Winspot_App.Services;
 using Winspot_App.ViewModels;
 
 namespace Winspot_App;
@@ -57,7 +57,7 @@ public sealed partial class SettingsWindow : Window
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"Opening the plugins folder failed: {exception}");
+            AppLog.Error(nameof(OnOpenPluginsFolderClick), exception);
         }
     }
 
@@ -83,7 +83,7 @@ public sealed partial class SettingsWindow : Window
         }
         catch (Exception exception)
         {
-            Debug.WriteLine($"Refreshing plugin validation failed: {exception}");
+            AppLog.Error(nameof(RefreshPluginValidationAsync), exception);
         }
     }
 
