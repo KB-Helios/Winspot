@@ -28,6 +28,16 @@ public static class AppPaths
         return Path.Combine(ResolveLocalAppData(localAppData), AppDataFolderName, "plugins");
     }
 
+    public static string ResolveLogPath(string baseDirectory, string? localAppData)
+    {
+        if (IsPortable(baseDirectory))
+        {
+            return Path.Combine(baseDirectory, "data", "logs", "app.log");
+        }
+
+        return Path.Combine(ResolveLocalAppData(localAppData), AppDataFolderName, "logs", "app.log");
+    }
+
     private static string ResolveLocalAppData(string? localAppData)
     {
         if (!string.IsNullOrWhiteSpace(localAppData))

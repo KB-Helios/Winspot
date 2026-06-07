@@ -6,6 +6,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Styling;
+using Avalonia.Threading;
 
 using Winspot_App.Models;
 using Winspot_App.Services;
@@ -28,6 +29,13 @@ public sealed partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // Record UI-thread exceptions that escape local handlers. We log but do
+        // not mark them handled: suppressing could leave the app in an
+        // inconsistent state, so we preserve the existing crash behaviour while
+        // gaining a durable trace.
+        Dispatcher.UIThread.UnhandledException += (_, args) =>
+            AppLog.Error("Dispatcher.UIThread.UnhandledException", args.Exception);
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             _desktop = desktop;

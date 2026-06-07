@@ -345,7 +345,7 @@ public sealed class WinspotIpcClient : IWinspotIpcClient
             new IpcPayload(
                 "Hello",
                 JsonSerializer.SerializeToElement(
-                    new Hello(1, 2, "Winspot.App"),
+                    new Hello(1, 1, "Winspot.App"),
                     JsonOptions)));
         await writer.WriteLineAsync(
             JsonSerializer.Serialize(hello, JsonOptions).AsMemory(),

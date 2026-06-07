@@ -18,11 +18,14 @@ actions, plugins, local persistence, and benchmark data.
 
 ## IPC
 
-IPC uses newline-delimited JSON envelopes with camelCase fields. Protocol v2
-adds `Hello`, `HelloAccepted`, `CancelRequest`, streaming `ResultBatch`,
-`SearchCompleted`, `PreviewChunk`, `PreviewReady`, `ActionCompleted`, and
-structured `Error` payloads. The daemon enforces a maximum JSON line size and
-returns typed backend errors for unsupported or oversized messages.
+IPC uses newline-delimited JSON envelopes with camelCase fields. The protocol is
+**v1**: the daemon advertises and negotiates exactly v1 and rejects clients that
+require a newer version. v1 defines `Hello`, `HelloAccepted`, `CancelRequest`,
+streaming `ResultBatch`, `SearchCompleted`, `PreviewChunk`, `PreviewReady`,
+`ActionCompleted`, and structured `Error` payloads. The daemon enforces a maximum
+JSON line size (rejecting oversized lines without buffering them) and answers
+malformed or unsupported messages with typed backend errors instead of dropping
+the connection.
 
 ## Search And Index
 

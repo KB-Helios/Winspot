@@ -11,6 +11,7 @@ use anyhow::Context;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(windows)]
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
+use tracing::{error, info, warn};
 use winspot_actions::{ActionExecutor, ActionPolicy};
 
 #[cfg(windows)]
@@ -109,9 +110,10 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
     let first = match create_secured_pipe(&config.pipe_name, true) {
         Ok(server) => server,
         Err(error) if is_first_pipe_instance_collision(&error) => {
-            eprintln!(
-                "winspot-daemon: another instance already owns {} ({error}); exiting",
-                config.pipe_name
+            warn!(
+                pipe_name = %config.pipe_name,
+                error = %error,
+                "another daemon instance already owns the pipe; exiting"
             );
             return Ok(());
         }
@@ -121,7 +123,7 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
         }
     };
     if let Err(error) = serve_connection(first, &runtime, &config).await {
-        eprintln!("winspot-daemon: connection error: {error:?}");
+        error!(error = ?error, "IPC connection error");
     }
 
     loop {
@@ -131,7 +133,7 @@ pub async fn serve_forever(config: PipeConfig) -> anyhow::Result<()> {
         // malformed payload) must not take down the daemon: log it and keep
         // accepting subsequent connections.
         if let Err(error) = serve_connection(server, &runtime, &config).await {
-            eprintln!("winspot-daemon: connection error: {error:?}");
+            error!(error = ?error, "IPC connection error");
         }
     }
 }
@@ -237,9 +239,10 @@ fn build_plugin_registry(
             .load_dir_into_with_report(dir)
             .map(|user_report| report.extend(user_report))
     {
-        eprintln!(
-            "winspot-daemon: failed to scan plugins directory {}: {error:?}",
-            dir.display()
+        warn!(
+            plugins_dir = %dir.display(),
+            error = ?error,
+            "failed to scan plugins directory"
         );
     }
     (
@@ -276,9 +279,10 @@ fn current_plugin_validation_report(
             report
         }
         Err(error) => {
-            eprintln!(
-                "winspot-daemon: failed to rescan plugins directory {}: {error:?}",
-                dir.display()
+            warn!(
+                plugins_dir = %dir.display(),
+                error = ?error,
+                "failed to rescan plugins directory"
             );
             runtime
                 .plugin_validation_report
@@ -341,6 +345,100 @@ pub async fn serve_runtime_pipe_once(
     serve_connection(server, runtime, &config).await
 }
 
+/// One decoded unit pulled off the IPC byte stream by [`read_bounded_line`].
+#[derive(Debug, PartialEq, Eq)]
+enum BoundedLine {
+    /// A complete newline-delimited line whose size stayed within the cap.
+    Line(String),
+    /// A line that exceeded the byte cap. The reader still drains it up to the
+    /// next newline (or EOF) so the stream stays framed, but the bytes are
+    /// discarded instead of buffered.
+    TooLarge,
+    /// The peer closed the connection with no further data.
+    Eof,
+}
+
+/// Reads a single newline-delimited line while never buffering more than
+/// `max_bytes` of it.
+///
+/// Unlike `read_line`/`read_until`, which buffer an entire line (or an endless
+/// newline-less stream) into memory before the caller can react, this scans the
+/// reader's buffered chunks incrementally. Once a line exceeds `max_bytes` the
+/// remaining bytes are consumed but dropped, so a hostile same-user client
+/// cannot drive unbounded allocation in the daemon. The pipe ACL controls *who*
+/// can connect; this bounds *how much* a permitted client can make us hold.
+async fn read_bounded_line<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    max_bytes: usize,
+) -> std::io::Result<BoundedLine> {
+    let mut buf: Vec<u8> = Vec::new();
+    let mut oversize = false;
+    let mut saw_any = false;
+
+    loop {
+        let (consume_len, newline) = {
+            let available = reader.fill_buf().await?;
+            if available.is_empty() {
+                if !saw_any {
+                    return Ok(BoundedLine::Eof);
+                }
+                break;
+            }
+            saw_any = true;
+
+            match available.iter().position(|&byte| byte == b'\n') {
+                Some(pos) => {
+                    if !oversize {
+                        if buf.len() + pos > max_bytes {
+                            oversize = true;
+                            buf = Vec::new();
+                        } else {
+                            buf.extend_from_slice(&available[..pos]);
+                        }
+                    }
+                    (pos + 1, true)
+                }
+                None => {
+                    let len = available.len();
+                    if !oversize {
+                        if buf.len() + len > max_bytes {
+                            oversize = true;
+                            buf = Vec::new();
+                        } else {
+                            buf.extend_from_slice(available);
+                        }
+                    }
+                    (len, false)
+                }
+            }
+        };
+
+        reader.consume(consume_len);
+        if newline {
+            break;
+        }
+    }
+
+    if oversize {
+        return Ok(BoundedLine::TooLarge);
+    }
+    Ok(BoundedLine::Line(
+        String::from_utf8_lossy(&buf).into_owned(),
+    ))
+}
+
+/// Structured error returned when a client sends a line larger than the cap.
+fn payload_too_large_envelope() -> IpcEnvelope {
+    IpcEnvelope::request(
+        "oversized-payload",
+        IpcPayload::Error(BackendError {
+            code: "payload_too_large".to_string(),
+            message: format!("IPC payload exceeds {MAX_JSON_LINE_BYTES} bytes"),
+            retryable: false,
+        }),
+    )
+}
+
 #[cfg(windows)]
 async fn serve_connection(
     server: NamedPipeServer,
@@ -353,32 +451,29 @@ async fn serve_connection(
         .with_context(|| format!("connect named pipe {}", config.pipe_name))?;
 
     let mut reader = BufReader::new(server);
-    let mut line = String::new();
-    while reader.read_line(&mut line).await.context("read IPC line")? > 0 {
-        if line.len() > MAX_JSON_LINE_BYTES {
-            write_envelope(
-                reader.get_mut(),
-                &IpcEnvelope::request(
-                    "oversized-payload",
-                    IpcPayload::Error(BackendError {
-                        code: "payload_too_large".to_string(),
-                        message: format!("IPC payload exceeds {MAX_JSON_LINE_BYTES} bytes"),
-                        retryable: false,
-                    }),
-                ),
-            )
-            .await?;
-            line.clear();
-            break;
-        }
-
-        let (responses, close_after) = handle_line(line.trim(), runtime, config)?;
-        for response in responses {
-            write_envelope(reader.get_mut(), &response).await?;
-        }
-        line.clear();
-        if close_after {
-            break;
+    loop {
+        match read_bounded_line(&mut reader, MAX_JSON_LINE_BYTES)
+            .await
+            .context("read IPC line")?
+        {
+            BoundedLine::Eof => break,
+            // An oversized line is a protocol violation: report it and close
+            // the connection. Crucially, `read_bounded_line` never buffered the
+            // payload, so a hostile client can no longer drive unbounded memory
+            // growth before we reach this point.
+            BoundedLine::TooLarge => {
+                write_envelope(reader.get_mut(), &payload_too_large_envelope()).await?;
+                break;
+            }
+            BoundedLine::Line(line) => {
+                let (responses, close_after) = handle_line(line.trim(), runtime, config)?;
+                for response in responses {
+                    write_envelope(reader.get_mut(), &response).await?;
+                }
+                if close_after {
+                    break;
+                }
+            }
         }
     }
 
@@ -390,7 +485,25 @@ fn handle_line(
     runtime: &DaemonRuntime,
     config: &PipeConfig,
 ) -> anyhow::Result<(Vec<IpcEnvelope>, bool)> {
-    let envelope: IpcEnvelope = serde_json::from_str(line).context("decode IPC envelope")?;
+    // A line that fails to decode is client-controlled, not a daemon fault:
+    // answer with a structured `bad_request` error and keep the connection
+    // open instead of bubbling an `Err` that tears down the whole session.
+    let envelope: IpcEnvelope = match serde_json::from_str(line) {
+        Ok(envelope) => envelope,
+        Err(error) => {
+            return Ok((
+                vec![IpcEnvelope::request(
+                    "bad-request",
+                    IpcPayload::Error(BackendError {
+                        code: "bad_request".to_string(),
+                        message: format!("could not decode IPC envelope: {error}"),
+                        retryable: false,
+                    }),
+                )],
+                false,
+            ));
+        }
+    };
     let request_id = envelope.request_id.clone();
 
     match envelope.payload {
@@ -643,7 +756,7 @@ fn handle_action(
         && let Err(error) = runtime
             .plugin_registry
             .read()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .ensure_plugin_command_allowed(&action.result_id)
     {
         return winspot_core::ActionCompleted {
@@ -676,7 +789,7 @@ fn handle_action(
             completed.message.clone()
         }
         Err(error) => {
-            eprintln!("winspot-daemon: action succeeded but usage logging failed: {error:?}");
+            warn!(error = ?error, "action succeeded but usage logging failed");
             format!("{} (usage logging failed)", completed.message)
         }
     };
@@ -715,16 +828,14 @@ fn handle_capture_action(
                         engine.record_usage(&action_clone.result_id, now);
                     }
                     Err(error) => {
-                        eprintln!(
-                            "winspot-daemon: capture succeeded but usage logging failed: {error:?}"
-                        );
+                        warn!(error = ?error, "capture succeeded but usage logging failed");
                         message.push_str(" (usage logging failed)");
                     }
                 }
-                eprintln!("winspot-daemon: {message}");
+                info!(%message, "capture action completed");
             }
             Err(error) => {
-                eprintln!("winspot-daemon: capture failed: {error:?}");
+                error!(error = ?error, "capture failed");
             }
         },
     );
@@ -911,9 +1022,10 @@ fn load_fastflowlm_settings() -> FastFlowLmSettings {
     match load_settings_from_path(&path) {
         Ok(settings) => settings,
         Err(error) => {
-            eprintln!(
-                "winspot-daemon: failed to read FastFlowLM settings from {}: {error:?}",
-                path.display()
+            warn!(
+                path = %path.display(),
+                error = ?error,
+                "failed to read FastFlowLM settings"
             );
             FastFlowLmSettings::default()
         }
@@ -928,9 +1040,10 @@ fn load_capture_settings() -> WindowsCaptureSettings {
     match load_capture_settings_from_path(&path) {
         Ok(settings) => settings,
         Err(error) => {
-            eprintln!(
-                "winspot-daemon: failed to read Windows Capture settings from {}: {error:?}",
-                path.display()
+            warn!(
+                path = %path.display(),
+                error = ?error,
+                "failed to read Windows Capture settings"
             );
             WindowsCaptureSettings::default()
         }
@@ -967,9 +1080,10 @@ fn build_fastflowlm_service(settings: FastFlowLmSettings) -> Option<FastFlowLmSe
 
     let store = match default_index_path() {
         Some(path) => IndexStore::open(&path).or_else(|error| {
-            eprintln!(
-                "winspot-daemon: failed to open launcher index {}: {error:?}; using empty index",
-                path.display()
+            warn!(
+                path = %path.display(),
+                error = ?error,
+                "failed to open launcher index; using empty index"
             );
             IndexStore::open_in_memory()
         }),
@@ -979,7 +1093,7 @@ fn build_fastflowlm_service(settings: FastFlowLmSettings) -> Option<FastFlowLmSe
     match store {
         Ok(store) => Some(FastFlowLmService::new(settings, store)),
         Err(error) => {
-            eprintln!("winspot-daemon: failed to initialize FastFlowLM index context: {error:?}");
+            error!(error = ?error, "failed to initialize FastFlowLM index context");
             None
         }
     }
@@ -1046,6 +1160,98 @@ mod tests {
         let error = io::Error::from_raw_os_error(123);
 
         assert!(!is_first_pipe_instance_collision(&error));
+    }
+
+    fn empty_runtime() -> DaemonRuntime {
+        let (registry, report) = PluginRegistry::with_built_ins_with_report();
+        DaemonRuntime {
+            engine: SearchEngine::from_results(Vec::new()),
+            plugin_registry: Arc::new(RwLock::new(registry)),
+            plugin_validation_report: Arc::new(RwLock::new(report)),
+            fastflowlm_service: None,
+            capture_service: None,
+        }
+    }
+
+    fn unused_config() -> PipeConfig {
+        PipeConfig {
+            pipe_name: r"\\.\pipe\unused".to_string(),
+            usage_log_path: None,
+            plugins_dir: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn read_bounded_line_returns_complete_lines_then_eof() {
+        let data = b"first\nsecond\n";
+        let mut reader = tokio::io::BufReader::new(&data[..]);
+
+        assert_eq!(
+            read_bounded_line(&mut reader, 1024).await.expect("first"),
+            BoundedLine::Line("first".to_string())
+        );
+        assert_eq!(
+            read_bounded_line(&mut reader, 1024).await.expect("second"),
+            BoundedLine::Line("second".to_string())
+        );
+        assert_eq!(
+            read_bounded_line(&mut reader, 1024).await.expect("eof"),
+            BoundedLine::Eof
+        );
+    }
+
+    #[tokio::test]
+    async fn read_bounded_line_rejects_oversize_then_resyncs() {
+        // A line far larger than the cap, followed by a well-formed line. The
+        // oversize line must be reported without buffering, and the reader must
+        // still be framed so the next line is returned intact.
+        let mut data = vec![b'x'; 64];
+        data.push(b'\n');
+        data.extend_from_slice(b"ok\n");
+        let mut reader = tokio::io::BufReader::new(&data[..]);
+
+        assert_eq!(
+            read_bounded_line(&mut reader, 8).await.expect("oversize"),
+            BoundedLine::TooLarge
+        );
+        assert_eq!(
+            read_bounded_line(&mut reader, 8).await.expect("resync"),
+            BoundedLine::Line("ok".to_string())
+        );
+    }
+
+    #[test]
+    fn handle_line_rejects_malformed_json_without_closing() {
+        let (responses, close_after) =
+            handle_line("{ not json", &empty_runtime(), &unused_config())
+                .expect("malformed line should be handled, not error");
+
+        assert!(
+            !close_after,
+            "a malformed line must not close the connection"
+        );
+        assert_eq!(responses.len(), 1);
+        match &responses[0].payload {
+            IpcPayload::Error(error) => assert_eq!(error.code, "bad_request"),
+            other => panic!("expected a bad_request Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn handle_line_negotiates_hello() {
+        let hello = r#"{"protocolVersion":1,"requestId":"r1","payload":{"type":"Hello","data":{"minProtocolVersion":1,"maxProtocolVersion":1,"clientName":"test"}}}"#;
+
+        let (responses, close_after) =
+            handle_line(hello, &empty_runtime(), &unused_config()).expect("hello");
+
+        assert!(!close_after, "negotiation keeps the connection open");
+        assert_eq!(responses.len(), 1);
+        match &responses[0].payload {
+            IpcPayload::HelloAccepted(accepted) => {
+                assert_eq!(accepted.protocol_version, MAX_PROTOCOL_VERSION);
+            }
+            other => panic!("expected HelloAccepted, got {other:?}"),
+        }
     }
 
     #[test]
