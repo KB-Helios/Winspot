@@ -3,6 +3,7 @@
     x:DataType="vm:SettingsViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Winspot_App.Controls"
     xmlns:vm="using:Winspot_App.ViewModels"
     Title="Winspot Settings"
     Width="720"
@@ -47,11 +48,33 @@
     </Window.Styles>
 
     <Grid Margin="18" RowDefinitions="Auto,*,Auto" RowSpacing="14">
-        <TextBlock
-            FontSize="20"
-            FontWeight="SemiBold"
-            Foreground="{DynamicResource TextPrimaryBrush}"
-            Text="Winspot Settings" />
+        <!-- Branded header: spotlight badge + title + subtitle. -->
+        <StackPanel Orientation="Horizontal" Spacing="14">
+            <Border
+                Width="42"
+                Height="42"
+                VerticalAlignment="Center"
+                Background="{DynamicResource AccentGradientBrush}"
+                CornerRadius="11">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                    FontSize="20"
+                    Foreground="{DynamicResource AccentForegroundBrush}"
+                    Text="&#xE721;" />
+            </Border>
+            <StackPanel VerticalAlignment="Center" Spacing="1">
+                <TextBlock
+                    FontSize="20"
+                    FontWeight="SemiBold"
+                    Foreground="{DynamicResource TextPrimaryBrush}"
+                    Text="Winspot Settings" />
+                <TextBlock
+                    Classes="hint"
+                    Text="Personalize search, motion, plugins and more" />
+            </StackPanel>
+        </StackPanel>
 
         <TabControl
             Grid.Row="1"
@@ -119,7 +142,15 @@
                             <StackPanel Spacing="12">
                                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
                                     <StackPanel Spacing="3">
-                                        <TextBlock Classes="section-title" Text="Plugin validation" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Classes="section-title" Text="Plugin validation" />
+                                            <controls:SearchSpinner
+                                                Width="14"
+                                                Height="14"
+                                                VerticalAlignment="Center"
+                                                AutomationProperties.Name="Validating plugins"
+                                                IsVisible="{Binding IsPluginValidationRunning}" />
+                                        </StackPanel>
                                         <TextBlock
                                             Classes="hint"
                                             Text="{Binding PluginValidationSummary}"
@@ -382,10 +413,9 @@
             <Button
                 x:Name="SaveButton"
                 Grid.Column="2"
+                Classes="accent"
                 Click="OnSaveClick"
                 Content="Save"
-                Foreground="{DynamicResource AccentForegroundBrush}"
-                Background="{DynamicResource AccentBrush}"
                 MinWidth="92" />
         </Grid>
     </Grid>

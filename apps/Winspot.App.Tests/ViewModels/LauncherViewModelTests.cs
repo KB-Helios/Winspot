@@ -100,6 +100,41 @@ public sealed class LauncherViewModelTests
     }
 
     [TestMethod]
+    public void IsSearching_WhenCreated_ReturnsFalse()
+    {
+        var viewModel = new LauncherViewModel(new FakeWinspotIpcClient());
+
+        Assert.IsFalse(viewModel.IsSearching);
+    }
+
+    [TestMethod]
+    public async Task IsSearching_WhileQuerying_RaisesBusyThenResets()
+    {
+        var client = new FakeWinspotIpcClient();
+        client.SearchBatches.Enqueue(new[] { Result("app:notes", "Notes") });
+        var viewModel = new LauncherViewModel(client);
+
+        var sawBusy = false;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(LauncherViewModel.IsSearching) && viewModel.IsSearching)
+            {
+                sawBusy = true;
+            }
+        };
+
+        var search = client.WaitForSearchAsync();
+        viewModel.Query = "note";
+        await search;
+
+        Assert.IsTrue(sawBusy, "The launcher should flag IsSearching while a query streams.");
+
+        // Clearing the query short-circuits synchronously and must drop the busy flag.
+        viewModel.Query = string.Empty;
+        Assert.IsFalse(viewModel.IsSearching);
+    }
+
+    [TestMethod]
     public void MoveSelectionDownAndUp_ChangesSelectedResult()
     {
         var viewModel = new LauncherViewModel(new FakeWinspotIpcClient());

@@ -3,6 +3,7 @@
     x:DataType="vm:LauncherViewModel"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Winspot_App.Controls"
     xmlns:models="using:Winspot_App.Models"
     xmlns:vm="using:Winspot_App.ViewModels"
     Title="Winspot"
@@ -83,9 +84,12 @@
 
         <Style Selector="ListBoxItem /template/ ContentPresenter">
             <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2,0,0,0" />
             <Setter Property="Transitions">
                 <Transitions>
                     <BrushTransition Property="Background" Duration="0:0:0.15" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15" />
                 </Transitions>
             </Setter>
         </Style>
@@ -94,8 +98,10 @@
             <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
         </Style>
 
+        <!-- Selected row: graphite fill plus a calm spotlight accent rail. -->
         <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
         </Style>
 
         <!-- Footer action hints: quiet, text-first chips with a soft key cap. -->
@@ -167,18 +173,25 @@
                                 Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                 PlaceholderText="Search apps, files, commands…" />
 
-                            <Border
-                                Grid.Column="2"
-                                VerticalAlignment="Center"
-                                IsVisible="{Binding !IsExpanded}"
-                                Background="{DynamicResource PanelElevatedBrush}"
-                                CornerRadius="6"
-                                Padding="8,3">
-                                <TextBlock
-                                    FontSize="11"
-                                    Foreground="{DynamicResource TextMutedBrush}"
-                                    Text="{Binding HotkeyHint}" />
-                            </Border>
+                            <Panel Grid.Column="2" VerticalAlignment="Center">
+                                <Border
+                                    VerticalAlignment="Center"
+                                    IsVisible="{Binding !IsExpanded}"
+                                    Background="{DynamicResource PanelElevatedBrush}"
+                                    CornerRadius="6"
+                                    Padding="8,3">
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{DynamicResource TextMutedBrush}"
+                                        Text="{Binding HotkeyHint}" />
+                                </Border>
+
+                                <!-- Live search activity indicator. -->
+                                <controls:SearchSpinner
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Searching"
+                                    IsVisible="{Binding IsSearching}" />
+                            </Panel>
                         </Grid>
                     </Border>
 
