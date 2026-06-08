@@ -85,6 +85,25 @@ public sealed class LauncherVisualStyleTests
     }
 
     [TestMethod]
+    public void SettingsWindow_WhenStyled_UsesWindows11MicaShell()
+    {
+        var axaml = File.ReadAllText(FindSettingsWindowAxaml());
+        var tokens = File.ReadAllText(FindTokensAxaml());
+
+        // Mica backdrop, with the acrylic material as the non-Win11 fallback.
+        StringAssert.Contains(axaml, "TransparencyLevelHint=\"Mica");
+        StringAssert.Contains(axaml, "ExperimentalAcrylicBorder");
+
+        // Windows 11 style left-navigation rail that keeps the named sections.
+        StringAssert.Contains(axaml, "TabStripPlacement=\"Left\"");
+        StringAssert.Contains(axaml, "Classes=\"nav\"");
+
+        // Translucent card + nav surfaces let the Mica backdrop read through.
+        StringAssert.Contains(tokens, "x:Key=\"CardBackgroundBrush\"");
+        StringAssert.Contains(tokens, "x:Key=\"NavItemSelectedBrush\"");
+    }
+
+    [TestMethod]
     public void Tokens_ExposeAccentGradientForBrandedControls()
     {
         var tokens = File.ReadAllText(FindTokensAxaml());

@@ -57,6 +57,20 @@
             <SolidColorBrush x:Key="TabIndicatorBrush" Color="#FF72F1D6" />
 
             <!--
+                Windows 11 Mica surfaces. Cards and the Settings navigation pane
+                are intentionally translucent so the Mica/acrylic backdrop reads
+                through them; when Mica is unavailable they fall back to a subtle
+                elevation over the acrylic material.
+            -->
+            <SolidColorBrush x:Key="MicaTintBrush" Color="#14111620" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#0FFFFFFF" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="NavPaneBrush" Color="#0AFFFFFF" />
+            <SolidColorBrush x:Key="NavItemHoverBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="NavItemSelectedBrush" Color="#1FFFFFFF" />
+
+            <!--
                 Tame FluentTheme's default focus visuals so the search box
                 keeps the calm graphite look without a selected-state glow.
             -->
@@ -109,6 +123,15 @@
             <SolidColorBrush x:Key="ControlBackgroundPressedBrush" Color="#FFE2E9F4" />
             <SolidColorBrush x:Key="ControlBorderBrush" Color="#1F000000" />
             <SolidColorBrush x:Key="TabIndicatorBrush" Color="#FF1FA98C" />
+
+            <!-- Win11 Mica surfaces (light mirror). -->
+            <SolidColorBrush x:Key="MicaTintBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#B8FFFFFF" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#14000000" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#E6FFFFFF" />
+            <SolidColorBrush x:Key="NavPaneBrush" Color="#0A000000" />
+            <SolidColorBrush x:Key="NavItemHoverBrush" Color="#0F000000" />
+            <SolidColorBrush x:Key="NavItemSelectedBrush" Color="#1A000000" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

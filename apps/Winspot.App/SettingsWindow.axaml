@@ -6,38 +6,47 @@
     xmlns:controls="using:Winspot_App.Controls"
     xmlns:vm="using:Winspot_App.ViewModels"
     Title="Winspot Settings"
-    Width="720"
-    Height="540"
-    Background="{DynamicResource SurfaceBrush}"
+    Width="788"
+    Height="576"
+    Background="Transparent"
+    TransparencyLevelHint="Mica, AcrylicBlur, Blur"
     CanResize="False"
     WindowStartupLocation="CenterScreen">
     <Window.Styles>
         <Style Selector="TextBlock.section-title">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Margin" Value="0,0,0,2" />
         </Style>
         <Style Selector="TextBlock.label">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="13" />
         </Style>
         <Style Selector="TextBlock.hint">
             <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="11.5" />
         </Style>
         <Style Selector="CheckBox">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="MinHeight" Value="28" />
         </Style>
+
+        <!-- Windows 11 "settings card": a translucent surface that lets the
+             Mica/acrylic backdrop read through it. Entrance motion is layered
+             by the shared Border.panel animation in Themes/Controls.axaml. -->
         <Style Selector="Border.panel">
-            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderInnerBrush}" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="14" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="BoxShadow" Value="0 2 10 0 #18000000" />
         </Style>
+
         <Style Selector="Grid.setting-row">
-            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="MinHeight" Value="40" />
         </Style>
         <Style Selector="Button.icon-button">
             <Setter Property="MinWidth" Value="34" />
@@ -45,11 +54,54 @@
             <Setter Property="Height" Value="30" />
             <Setter Property="Padding" Value="0" />
         </Style>
+
+        <!-- Left navigation rail styled like the Windows 11 Settings pane. -->
+        <Style Selector="TabControl.nav TabItem">
+            <Setter Property="Width" Value="176" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+        <Style Selector="TabControl.nav TabItem /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="BorderThickness" Value="3,0,0,0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="TabControl.nav TabItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NavItemHoverBrush}" />
+        </Style>
+        <Style Selector="TabControl.nav TabItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NavItemSelectedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        </Style>
     </Window.Styles>
 
-    <Grid Margin="18" RowDefinitions="Auto,*,Auto" RowSpacing="14">
+    <Panel>
+        <!--
+            Windows 11 Mica backdrop. The window itself is transparent and hints
+            Mica first; where Mica is unavailable the acrylic material below keeps
+            the same frosted surface so the Settings page reads cleanly anywhere.
+        -->
+        <ExperimentalAcrylicBorder IsHitTestVisible="False">
+            <ExperimentalAcrylicBorder.Material>
+                <ExperimentalAcrylicMaterial
+                    BackgroundSource="Digger"
+                    FallbackColor="{DynamicResource SurfaceColor}"
+                    MaterialOpacity="0.82"
+                    TintColor="{DynamicResource SurfaceTintColor}"
+                    TintOpacity="1" />
+            </ExperimentalAcrylicBorder.Material>
+        </ExperimentalAcrylicBorder>
+
+        <Grid RowDefinitions="Auto,*,Auto">
         <!-- Branded header: spotlight badge + title + subtitle. -->
-        <StackPanel Orientation="Horizontal" Spacing="14">
+        <StackPanel
+            Grid.Row="0"
+            Margin="22,20,22,12"
+            Orientation="Horizontal"
+            Spacing="14">
             <Border
                 Width="42"
                 Height="42"
@@ -78,9 +130,17 @@
 
         <TabControl
             Grid.Row="1"
+            Classes="nav"
+            Margin="14,2,18,6"
+            TabStripPlacement="Left"
             SelectedIndex="{Binding SelectedSectionIndex}">
+            <TabControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Vertical" />
+                </ItemsPanelTemplate>
+            </TabControl.ItemsPanel>
             <TabItem Header="General">
-                <Border Classes="panel" Margin="0,10,0,0">
+                <Border Classes="panel" Margin="18,4,2,2">
                     <StackPanel Spacing="10">
                         <TextBlock Classes="section-title" Text="General" />
                         <CheckBox Content="Launch Winspot when I sign in" IsChecked="{Binding LaunchOnStartup}" />
@@ -90,7 +150,7 @@
             </TabItem>
 
             <TabItem Header="Hotkey">
-                <Border Classes="panel" Margin="0,10,0,0">
+                <Border Classes="panel" Margin="18,4,2,2">
                     <StackPanel Spacing="12">
                         <TextBlock Classes="section-title" Text="Activation hotkey" />
                         <WrapPanel>
@@ -114,7 +174,7 @@
             </TabItem>
 
             <TabItem Header="Appearance">
-                <Border Classes="panel" Margin="0,10,0,0">
+                <Border Classes="panel" Margin="18,4,2,2">
                     <StackPanel Spacing="12">
                         <TextBlock Classes="section-title" Text="Appearance" />
                         <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
@@ -136,7 +196,7 @@
             </TabItem>
 
             <TabItem Header="Plugins">
-                <ScrollViewer Margin="0,10,0,0" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer Margin="18,4,2,2" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="12">
                         <Border Classes="panel">
                             <StackPanel Spacing="12">
@@ -361,7 +421,7 @@
             </TabItem>
 
             <TabItem Header="Diagnostics">
-                <Border Classes="panel" Margin="0,10,0,0">
+                <Border Classes="panel" Margin="18,4,2,2">
                     <StackPanel Spacing="10">
                         <TextBlock Classes="section-title" Text="Diagnostics" />
                         <TextBlock
@@ -374,7 +434,7 @@
             </TabItem>
 
             <TabItem Header="About">
-                <Border Classes="panel" Margin="0,10,0,0">
+                <Border Classes="panel" Margin="18,4,2,2">
                     <StackPanel Spacing="10">
                         <TextBlock Classes="section-title" Text="About" />
                         <Grid Classes="setting-row" ColumnDefinitions="210,*" ColumnSpacing="18">
@@ -395,28 +455,33 @@
             </TabItem>
         </TabControl>
 
-        <Grid
+        <Border
             Grid.Row="2"
-            ColumnDefinitions="*,Auto,Auto"
-            ColumnSpacing="10">
-            <TextBlock
-                Classes="hint"
-                VerticalAlignment="Center"
-                Foreground="{DynamicResource AccentBrush}"
-                Text="{Binding StatusMessage}" />
-            <Button
-                x:Name="CancelButton"
-                Grid.Column="1"
-                Click="OnCancelClick"
-                Content="Cancel"
-                MinWidth="92" />
-            <Button
-                x:Name="SaveButton"
-                Grid.Column="2"
-                Classes="accent"
-                Click="OnSaveClick"
-                Content="Save"
-                MinWidth="92" />
+            Padding="22,12"
+            Background="{DynamicResource NavPaneBrush}"
+            BorderBrush="{DynamicResource CardBorderBrush}"
+            BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                <TextBlock
+                    Classes="hint"
+                    VerticalAlignment="Center"
+                    Foreground="{DynamicResource AccentBrush}"
+                    Text="{Binding StatusMessage}" />
+                <Button
+                    x:Name="CancelButton"
+                    Grid.Column="1"
+                    Click="OnCancelClick"
+                    Content="Cancel"
+                    MinWidth="92" />
+                <Button
+                    x:Name="SaveButton"
+                    Grid.Column="2"
+                    Classes="accent"
+                    Click="OnSaveClick"
+                    Content="Save"
+                    MinWidth="92" />
+            </Grid>
+        </Border>
         </Grid>
-    </Grid>
+    </Panel>
 </Window>
