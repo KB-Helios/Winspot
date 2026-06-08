@@ -85,6 +85,73 @@ public sealed class LauncherVisualStyleTests
     }
 
     [TestMethod]
+    public void SettingsWindow_WhenStyled_UsesWindows11MicaShell()
+    {
+        var axaml = File.ReadAllText(FindSettingsWindowAxaml());
+        var tokens = File.ReadAllText(FindTokensAxaml());
+
+        // Mica backdrop, with the acrylic material as the non-Win11 fallback.
+        StringAssert.Contains(axaml, "TransparencyLevelHint=\"Mica");
+        StringAssert.Contains(axaml, "ExperimentalAcrylicBorder");
+
+        // Windows 11 style left-navigation rail that keeps the named sections.
+        StringAssert.Contains(axaml, "TabStripPlacement=\"Left\"");
+        StringAssert.Contains(axaml, "Classes=\"nav\"");
+
+        // Translucent card + nav surfaces let the Mica backdrop read through.
+        StringAssert.Contains(tokens, "x:Key=\"CardBackgroundBrush\"");
+        StringAssert.Contains(tokens, "x:Key=\"NavItemSelectedBrush\"");
+    }
+
+    [TestMethod]
+    public void Tokens_ExposeAccentGradientForBrandedControls()
+    {
+        var tokens = File.ReadAllText(FindTokensAxaml());
+
+        StringAssert.Contains(tokens, "x:Key=\"AccentGradientBrush\"");
+        StringAssert.Contains(tokens, "x:Key=\"FocusRingBrush\"");
+        StringAssert.Contains(tokens, "x:Key=\"ControlBackgroundBrush\"");
+    }
+
+    [TestMethod]
+    public void Controls_WhenLayered_RefineSimpleThemeWithoutReplacingIt()
+    {
+        var app = File.ReadAllText(FindAppAxaml());
+        var controls = File.ReadAllText(FindControlsAxaml());
+
+        // The shared sheet must be layered after (not instead of) SimpleTheme.
+        StringAssert.Contains(app, "<SimpleTheme />");
+        StringAssert.Contains(app, "Themes/Controls.axaml");
+        StringAssert.Contains(controls, "Selector=\"Button.accent\"");
+        StringAssert.Contains(controls, "Selector=\"TabItem:selected");
+    }
+
+    [TestMethod]
+    public void SearchSpinner_ControlAndAnimatedAssetExist()
+    {
+        var spinner = File.ReadAllText(FindSearchSpinnerAxaml());
+        var icon = File.ReadAllText(FindSearchLoadingIcon());
+
+        // The in-app control rotates continuously without a hardcoded frame cap.
+        StringAssert.Contains(spinner, "IterationCount=\"Infinite\"");
+        StringAssert.Contains(spinner, "RotateTransform.Angle");
+        Assert.IsFalse(spinner.Contains("Task.Delay"), "The spinner must not throttle motion with a timer.");
+
+        // The deliverable SVG is genuinely animated.
+        StringAssert.Contains(icon, "animateTransform");
+        StringAssert.Contains(icon, "repeatCount=\"indefinite\"");
+    }
+
+    [TestMethod]
+    public void MainWindow_WhenSearching_ShowsLoadingSpinner()
+    {
+        var axaml = File.ReadAllText(FindMainWindowAxaml());
+
+        StringAssert.Contains(axaml, "controls:SearchSpinner");
+        StringAssert.Contains(axaml, "IsVisible=\"{Binding IsSearching}\"");
+    }
+
+    [TestMethod]
     public void MainWindowCode_WhenInspected_DoesNotThrottleResizeAnimationToSixtyHertz()
     {
         var code = File.ReadAllText(FindMainWindowCodeBehind());
@@ -173,6 +240,15 @@ public sealed class LauncherVisualStyleTests
 
     private static string FindTokensAxaml() =>
         FindRepoFile(Path.Combine("apps", "Winspot.App", "Themes", "Tokens.axaml"));
+
+    private static string FindControlsAxaml() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "Themes", "Controls.axaml"));
+
+    private static string FindSearchSpinnerAxaml() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "Controls", "SearchSpinner.axaml"));
+
+    private static string FindSearchLoadingIcon() =>
+        FindRepoFile(Path.Combine("apps", "Winspot.App", "Assets", "Icons", "search-loading.svg"));
 
     private static string ExtractMethodBody(string code, string methodName)
     {

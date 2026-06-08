@@ -39,6 +39,38 @@
             <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#665F6F84" />
 
             <!--
+                Interactive control tokens (buttons, tabs, combo boxes, the search
+                spinner). The "beam" gradient mirrors the brand tray mark so the
+                accent reads as a single material across the app.
+            -->
+            <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Offset="0" Color="#FF9AF8E5" />
+                <GradientStop Offset="0.58" Color="#FF72F1D6" />
+                <GradientStop Offset="1" Color="#FF3BBEA4" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="AccentSoftBrush" Color="#2272F1D6" />
+            <SolidColorBrush x:Key="FocusRingBrush" Color="#FF72F1D6" />
+            <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#FF1B2433" />
+            <SolidColorBrush x:Key="ControlBackgroundHoverBrush" Color="#FF222D3F" />
+            <SolidColorBrush x:Key="ControlBackgroundPressedBrush" Color="#FF161E2A" />
+            <SolidColorBrush x:Key="ControlBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="TabIndicatorBrush" Color="#FF72F1D6" />
+
+            <!--
+                Windows 11 Mica surfaces. Cards and the Settings navigation pane
+                are intentionally translucent so the Mica/acrylic backdrop reads
+                through them; when Mica is unavailable they fall back to a subtle
+                elevation over the acrylic material.
+            -->
+            <SolidColorBrush x:Key="MicaTintBrush" Color="#14111620" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#0FFFFFFF" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#1AFFFFFF" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="NavPaneBrush" Color="#0AFFFFFF" />
+            <SolidColorBrush x:Key="NavItemHoverBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="NavItemSelectedBrush" Color="#1FFFFFFF" />
+
+            <!--
                 Tame FluentTheme's default focus visuals so the search box
                 keeps the calm graphite look without a selected-state glow.
             -->
@@ -77,6 +109,29 @@
             <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="CaretBrush" Color="#FF161B24" />
             <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#66AFC4E0" />
+
+            <!-- Interactive control tokens (light mirror of the dark set). -->
+            <LinearGradientBrush x:Key="AccentGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+                <GradientStop Offset="0" Color="#FF3BD3B4" />
+                <GradientStop Offset="0.58" Color="#FF1FA98C" />
+                <GradientStop Offset="1" Color="#FF15786A" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="AccentSoftBrush" Color="#221FA98C" />
+            <SolidColorBrush x:Key="FocusRingBrush" Color="#FF1FA98C" />
+            <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="ControlBackgroundHoverBrush" Color="#FFEFF3FA" />
+            <SolidColorBrush x:Key="ControlBackgroundPressedBrush" Color="#FFE2E9F4" />
+            <SolidColorBrush x:Key="ControlBorderBrush" Color="#1F000000" />
+            <SolidColorBrush x:Key="TabIndicatorBrush" Color="#FF1FA98C" />
+
+            <!-- Win11 Mica surfaces (light mirror). -->
+            <SolidColorBrush x:Key="MicaTintBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#B8FFFFFF" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#14000000" />
+            <SolidColorBrush x:Key="CardHoverBrush" Color="#E6FFFFFF" />
+            <SolidColorBrush x:Key="NavPaneBrush" Color="#0A000000" />
+            <SolidColorBrush x:Key="NavItemHoverBrush" Color="#0F000000" />
+            <SolidColorBrush x:Key="NavItemSelectedBrush" Color="#1A000000" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

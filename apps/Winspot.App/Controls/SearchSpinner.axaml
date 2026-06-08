@@ -1,0 +1,52 @@
+<UserControl
+    x:Class="Winspot_App.Controls.SearchSpinner"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shapes="using:Avalonia.Controls.Shapes"
+    Width="20"
+    Height="20"
+    Focusable="False"
+    IsHitTestVisible="False">
+    <!--
+        A lightweight, dependency-free loading spinner. A faint full ring sits
+        behind a gradient arc that rotates continuously. The rotation runs on the
+        render thread (display-refresh smooth, so it benefits from high refresh
+        rates) and Avalonia automatically halts it while the control is hidden,
+        so binding IsVisible to a busy flag is enough to start/stop it.
+    -->
+    <UserControl.Styles>
+        <Style Selector="shapes|Arc.spin">
+            <Style.Animations>
+                <Animation
+                    Duration="0:0:0.85"
+                    Easing="LinearEasing"
+                    IterationCount="Infinite">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="RotateTransform.Angle" Value="0" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="RotateTransform.Angle" Value="360" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid>
+        <Ellipse
+            Stroke="{DynamicResource BorderSubtleBrush}"
+            StrokeThickness="2.4" />
+        <shapes:Arc
+            Classes="spin"
+            RenderTransformOrigin="50%,50%"
+            StartAngle="-90"
+            Stroke="{DynamicResource AccentGradientBrush}"
+            StrokeLineCap="Round"
+            StrokeThickness="2.4"
+            SweepAngle="105">
+            <shapes:Arc.RenderTransform>
+                <RotateTransform Angle="0" />
+            </shapes:Arc.RenderTransform>
+        </shapes:Arc>
+    </Grid>
+</UserControl>

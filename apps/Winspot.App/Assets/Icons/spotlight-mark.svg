@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Winspot</title>
+  <desc id="desc">The Winspot spotlight mark: a beam wedge with a focusing lens, used in the settings header.</desc>
+  <defs>
+    <linearGradient id="beam" x1="18" y1="14" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9AF8E5" />
+      <stop offset="0.58" stop-color="#72F1D6" />
+      <stop offset="1" stop-color="#3BBEA4" />
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="16" fill="#111620" />
+  <path
+    d="M22 21h7.4l3.1 15.2L37.4 21H42L34.8 43h-5.1l-3-14.2L23.8 43h-5.1l-5-22h4.7l3.1 15.2L22 21Z"
+    fill="url(#beam)" />
+  <circle cx="41" cy="41" r="8" fill="none" stroke="#E8EDF7" stroke-opacity="0.92" stroke-width="4" />
+  <path d="M47 47l4 4" fill="none" stroke="#72F1D6" stroke-linecap="round" stroke-width="4" />
+</svg>

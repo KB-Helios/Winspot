@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">No results</title>
+  <desc id="desc">A softly pulsing magnifier shown when a Winspot search returns no matches.</desc>
+  <defs>
+    <linearGradient id="beam" x1="14" y1="14" x2="46" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9AF8E5" />
+      <stop offset="1" stop-color="#3BBEA4" />
+    </linearGradient>
+  </defs>
+
+  <g fill="none" stroke="url(#beam)" stroke-linecap="round">
+    <circle cx="28" cy="28" r="14" stroke-width="4" />
+    <path d="M38 38l10 10" stroke-width="5" />
+    <!-- empty "no match" stroke -->
+    <path d="M22 28h12" stroke-width="3.5" stroke-opacity="0.55" />
+    <animate
+      attributeName="stroke-opacity"
+      values="0.55;1;0.55"
+      dur="2.2s"
+      repeatCount="indefinite" />
+  </g>
+</svg>

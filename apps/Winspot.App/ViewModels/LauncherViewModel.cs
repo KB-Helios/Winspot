@@ -25,6 +25,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     private string _previewTitle = "Preview";
     private SearchResultItem? _selectedResult;
     private string _statusText = "Start typing to search";
+    private bool _isSearching;
     private string _hotkeyHint;
     private string _hotkeyStatusText = "Hotkey not registered yet";
     private IReadOnlyList<ActionItem> _selectedResultActions = Array.Empty<ActionItem>();
@@ -137,6 +138,15 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
     {
         get => _statusText;
         private set => SetField(ref _statusText, value);
+    }
+
+    /// True while a query is streaming results from the backend. Drives the
+    /// search-field loading spinner so the launcher shows live activity instead
+    /// of a silent pause.
+    public bool IsSearching
+    {
+        get => _isSearching;
+        private set => SetField(ref _isSearching, value);
     }
 
     public Task ExecuteSelectedAsync() => AcceptSelectionAsync();
@@ -311,6 +321,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
             SelectedResult = null;
             ResetPreview();
             StatusText = "Start typing to search";
+            IsSearching = false;
             return;
         }
 
@@ -318,6 +329,7 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
         {
             await Task.Delay(60, cancellationToken);
             StatusText = "Searching";
+            IsSearching = true;
 
             await foreach (var results in _ipcClient.StreamSearchAsync(query, cancellationToken))
             {
@@ -348,6 +360,15 @@ public sealed class LauncherViewModel : INotifyPropertyChanged
             SelectedResult = null;
             ResetPreview();
             StatusText = $"Backend unavailable: {ex.Message}";
+        }
+        finally
+        {
+            // Leave the spinner running if this query was superseded: the newer
+            // query has already flipped IsSearching back on and will own it.
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                IsSearching = false;
+            }
         }
     }
 

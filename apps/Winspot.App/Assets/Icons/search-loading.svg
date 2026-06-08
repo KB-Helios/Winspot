@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title desc">
+  <title id="title">Winspot search loading</title>
+  <desc id="desc">An animated spotlight spinner shown while Winspot streams search results.</desc>
+  <defs>
+    <linearGradient id="beam" x1="6" y1="6" x2="42" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9AF8E5" />
+      <stop offset="0.58" stop-color="#72F1D6" />
+      <stop offset="1" stop-color="#3BBEA4" />
+    </linearGradient>
+  </defs>
+
+  <!-- faint full track -->
+  <circle cx="24" cy="24" r="16" fill="none" stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="4" />
+
+  <!-- rotating gradient arc -->
+  <g>
+    <path
+      d="M24 8a16 16 0 0 1 14.4 9"
+      fill="none"
+      stroke="url(#beam)"
+      stroke-linecap="round"
+      stroke-width="4" />
+    <animateTransform
+      attributeName="transform"
+      attributeType="XML"
+      type="rotate"
+      from="0 24 24"
+      to="360 24 24"
+      dur="0.85s"
+      repeatCount="indefinite" />
+  </g>
+</svg>
